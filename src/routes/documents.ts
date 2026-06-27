@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { DocumentRepository } from '../repositories/documentRepository.js';
 import { documentDetailSchema, uploadResponseSchema } from '../schemas/document.js';
+import { classifyDocument } from '../services/classifier.js';
 import { extractText } from '../services/extraction.js';
 import { deleteUpload, getUploadPath, saveUpload } from '../services/storage.js';
 
@@ -83,5 +84,32 @@ export async function documentRoutes(
     });
 
     return reply.send(detail);
+  });
+
+  app.post<{ Params: { id: string } }>('/documents/:id/classify', async (request, reply) => {
+    const { id } = request.params;
+    const record = await repo.findById(id);
+
+    if (!record) {
+      return reply.status(404).send({ error: `Document ${id} not found` });
+    }
+
+    if (record.extraction.status === 'extraction_failed') {
+      return reply.status(422).send({
+        error: 'Cannot classify document — text extraction failed',
+        reason: record.extraction.reason,
+      });
+    }
+
+    const result = await classifyDocument(record.extraction.text);
+
+    if (result.status === 'classification_failed') {
+      return reply.status(502).send({
+        error: 'Classification failed',
+        reason: result.reason,
+      });
+    }
+
+    return reply.send(result.classification);
   });
 }

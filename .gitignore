@@ -6,3 +6,6 @@ uploads/
 learning-plan-final-July.md
 docs/day-2.md
 docs/use-this-plan-zesty-mitten.md
+*.pdf
+*.md
+.DS_Store
