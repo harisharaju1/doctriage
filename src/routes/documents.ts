@@ -1,14 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import type { DocumentRepository } from '../repositories/documentRepository.js';
 import { documentDetailSchema, uploadResponseSchema } from '../schemas/document.js';
-import { getDocument, setDocument } from '../services/documentStore.js';
 import { extractText } from '../services/extraction.js';
 import { deleteUpload, getUploadPath, saveUpload } from '../services/storage.js';
 
 export const ALLOWED_MIME_TYPE = 'application/pdf';
 export const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
-export async function documentRoutes(app: FastifyInstance): Promise<void> {
+interface DocumentRouteOptions {
+  repo: DocumentRepository;
+}
+
+export async function documentRoutes(
+  app: FastifyInstance,
+  opts: DocumentRouteOptions,
+): Promise<void> {
+  const { repo } = opts;
+
   app.post('/documents', async (request, reply) => {
     const file = await request.file();
 
@@ -35,7 +44,7 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
     const filePath = getUploadPath(documentId);
     const extraction = await extractText(filePath);
 
-    setDocument({
+    await repo.save({
       documentId,
       filename: file.filename,
       filePath,
@@ -60,7 +69,7 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { id: string } }>('/documents/:id', async (request, reply) => {
     const { id } = request.params;
-    const record = getDocument(id);
+    const record = await repo.findById(id);
 
     if (!record) {
       return reply.status(404).send({ error: `Document ${id} not found` });

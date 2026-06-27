@@ -6,16 +6,16 @@ const extractionResultSchema = z.discriminatedUnion('status', [
 ]);
 
 export const uploadResponseSchema = z.object({
-  documentId: z.string().uuid(),
+  documentId: z.uuid(),
   filename: z.string(),
   status: z.literal('uploaded'),
   extraction: extractionResultSchema,
 });
 
 export const documentDetailSchema = z.object({
-  documentId: z.string().uuid(),
+  documentId: z.uuid(),
   filename: z.string(),
-  uploadedAt: z.string().datetime(),
+  uploadedAt: z.iso.datetime(),
   extraction: z.discriminatedUnion('status', [
     z.object({ status: z.literal('success'), pageCount: z.number(), text: z.string() }),
     z.object({ status: z.literal('extraction_failed'), reason: z.string() }),
