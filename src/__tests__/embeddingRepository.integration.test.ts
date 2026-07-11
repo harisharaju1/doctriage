@@ -106,14 +106,32 @@ describe.skipIf(!hasPostgresUrl)('PostgresEmbeddingRepository (integration)', ()
     // both working correctly, the two vocabulary-sharing rows should come
     // back ranked ahead of the unrelated one.
     const queryEmbedding = generateMockEmbedding('police report vehicle collision claimant');
-    const results = await repo.findSimilar(queryEmbedding, 3);
+
+    // findSimilar() is deliberately UNSCOPED — it searches every row in the
+    // table, across every test file's data, not just the three rows this
+    // test just inserted. Vitest runs test files in parallel by default, and
+    // this test file and retrieval.integration.test.ts both hit the same
+    // live Postgres database concurrently — so by the time this query runs,
+    // the table may well contain rows from other tests too. A tight
+    // `limit: 3` assuming "only my three rows exist" is fragile against
+    // that; asking for more results and then filtering down to just the
+    // three chunks THIS test cares about is what makes the test robust to
+    // running alongside others, while still proving the same thing
+    // (findSimilar's ranking is correct) — this is a genuine, useful lesson
+    // about testing against a real shared database rather than an isolated
+    // mock: you don't control what else is in the table.
+    const allResults = await repo.findSimilar(queryEmbedding, 50);
+    const results = allResults.filter((r) =>
+      [similarChunkA, similarChunkB, dissimilarChunk].includes(r.chunkText),
+    );
 
     expect(results).toHaveLength(3);
 
     // Every result's `distance` came directly from Postgres's `<=>` operator
     // — remember, this is cosine DISTANCE (smaller = more similar), so
-    // "ranked ahead of" means "smaller distance," and results are already
-    // ORDER BY-sorted ascending by the repository's query.
+    // "ranked ahead of" means "smaller distance." `results` here preserves
+    // the original ascending-distance order (filter() doesn't reorder), so
+    // position within this filtered array still reflects real ranking.
     const resultTexts = results.map((r) => r.chunkText);
     expect(resultTexts[0]).not.toBe(dissimilarChunk);
     expect(resultTexts[1]).not.toBe(dissimilarChunk);

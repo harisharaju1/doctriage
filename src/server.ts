@@ -6,6 +6,7 @@ import { loadEnv } from './config/env.js';
 import { pool } from './config/db.js';
 import { runMigrations } from './db/migrate.js';
 import { InMemoryDocumentRepository } from './repositories/inMemoryDocumentRepository.js';
+import { PostgresEmbeddingRepository } from './repositories/postgresEmbeddingRepository.js';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from './routes/documents.js';
 import { healthRoutes } from './routes/health.js';
 
@@ -25,7 +26,11 @@ await app.register(multipart, {
 await app.register(healthRoutes);
 
 const documentRepo = new InMemoryDocumentRepository();
-await app.register(documentRoutes, { repo: documentRepo });
+// Shares the one pool from src/config/db.ts — same reasoning as that file's
+// "why one shared pool" comment: every repository that talks to Postgres
+// should draw from the same small set of pooled connections, not open its own.
+const embeddingRepo = new PostgresEmbeddingRepository(pool);
+await app.register(documentRoutes, { repo: documentRepo, embeddingRepo });
 
 // As of Week 2 Day 1, Postgres is genuinely load-bearing (previously nothing
 // used it — see checkConnectivity() below, which used to include it as a

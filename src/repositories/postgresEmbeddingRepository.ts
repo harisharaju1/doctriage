@@ -115,4 +115,110 @@ export class PostgresEmbeddingRepository implements EmbeddingRepository {
 
     return result.rows.map((row) => ({ ...toRecord(row), distance: row.distance }));
   }
+
+  async findSimilarInDocument(
+    documentId: string,
+    embedding: number[],
+    limit: number,
+  ): Promise<Array<ChunkEmbeddingRecord & { distance: number }>> {
+    // Same cosine-distance query as findSimilar above, with one addition:
+    // `WHERE document_id = $2`. This is pushed into the SQL itself — not
+    // applied as a client-side `.filter()` after fetching a global top-K —
+    // for two reasons (see docs/week-2-day-2.md for the full explanation):
+    //
+    // 1. CORRECTNESS: a global top-K search could return zero rows from
+    //    this document at all, if other documents' chunks happen to rank
+    //    higher. Filtering afterward can't recover chunks that were never
+    //    fetched in the first place.
+    // 2. EFFICIENCY: schema.sql's chunk_embeddings_document_id_idx (added
+    //    Day 1, specifically anticipating this) lets Postgres narrow down to
+    //    this document's rows BEFORE computing any distance calculations,
+    //    instead of scoring every row in the whole table and discarding
+    //    most of the results.
+    const result = await this.pool.query<ChunkEmbeddingRow & { distance: number }>(
+      `SELECT *, embedding <=> $1 AS distance
+       FROM chunk_embeddings
+       WHERE document_id = $2
+       ORDER BY embedding <=> $1
+       LIMIT $3`,
+      [pgvector.toSql(embedding), documentId, limit],
+    );
+
+    return result.rows.map((row) => ({ ...toRecord(row), distance: row.distance }));
+  }
+
+  async replaceChunksForDocument(
+    documentId: string,
+    chunks: Array<Omit<ChunkEmbeddingRecord, 'id' | 'createdAt' | 'documentId'>>,
+  ): Promise<ChunkEmbeddingRecord[]> {
+    // A transaction needs to run on ONE dedicated connection, not through
+    // the pool's normal "grab whichever connection is free" behavior —
+    // BEGIN/COMMIT only mean something within a single connection's session.
+    // `pool.connect()` checks out one client and holds it for exclusive use
+    // until we're done with it (`client.release()` in the `finally` below).
+    const client = await this.pool.connect();
+
+    try {
+      // BEGIN starts a transaction: none of the writes below become visible
+      // to any other connection (or durable on disk) until COMMIT succeeds.
+      // If anything throws before COMMIT, the catch block below runs
+      // ROLLBACK, which undoes every write since BEGIN — so a crash or error
+      // partway through can never leave this document with a half-deleted,
+      // half-inserted set of chunks. See docs/week-2-day-2.md's "database
+      // transactions" section for the full reasoning (this is the same
+      // atomicity guarantee as wrapping multiple SaveChanges() calls in a
+      // .NET TransactionScope).
+      await client.query('BEGIN');
+
+      await client.query('DELETE FROM chunk_embeddings WHERE document_id = $1', [documentId]);
+
+      const inserted: ChunkEmbeddingRecord[] = [];
+      for (const chunk of chunks) {
+        const result = await client.query<{ id: string; created_at: Date }>(
+          `INSERT INTO chunk_embeddings (document_id, chunk_index, chunk_text, embedding)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, created_at`,
+          [documentId, chunk.chunkIndex, chunk.chunkText, pgvector.toSql(chunk.embedding)],
+        );
+        const generated = result.rows[0]!;
+        inserted.push({
+          ...chunk,
+          documentId,
+          id: generated.id,
+          createdAt: generated.created_at,
+        });
+      }
+
+      await client.query('COMMIT');
+      return inserted;
+    } catch (err) {
+      // Best-effort rollback — if the connection itself died (rather than
+      // the query merely failing), this ROLLBACK will also fail, but at that
+      // point the transaction was never going to commit anyway, so we
+      // deliberately let the original error propagate rather than masking it
+      // with a rollback failure.
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      // Always return the client to the pool, whether the transaction
+      // succeeded or failed — without this, a failed transaction would leak
+      // a connection out of the pool permanently, and the pool would
+      // eventually run out of connections to hand to anyone else.
+      client.release();
+    }
+  }
+
+  async countChunksForDocument(documentId: string): Promise<number> {
+    // COUNT(*) returns a Postgres `bigint`, which node-postgres deserializes
+    // as a *string* by default (a JS `number` can't safely represent every
+    // possible bigint value) — so this needs an explicit Number() conversion
+    // rather than trusting the driver to hand back a number directly. Safe
+    // here because a chunk count per document will never be anywhere close
+    // to Number.MAX_SAFE_INTEGER.
+    const result = await this.pool.query<{ count: string }>(
+      'SELECT COUNT(*) FROM chunk_embeddings WHERE document_id = $1',
+      [documentId],
+    );
+    return Number(result.rows[0]!.count);
+  }
 }

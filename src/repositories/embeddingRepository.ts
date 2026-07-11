@@ -43,5 +43,48 @@ export interface EmbeddingRepository {
   // each match is, e.g. to filter out weak matches later once real retrieval
   // logic is built (Day 2+). Smaller distance = more similar; see
   // postgresEmbeddingRepository.ts for why (cosine distance, not similarity).
+  //
+  // This searches EVERY row in the table, across every document — kept
+  // around because it's still the right tool for a genuinely global search,
+  // but real per-document retrieval (Day 2+) should use
+  // findSimilarInDocument below instead. See docs/week-2-day-2.md's
+  // "why does retrieval need to be scoped to one document?" section for why
+  // an unscoped search is the wrong default once more than one document's
+  // chunks are in the table.
   findSimilar(embedding: number[], limit: number): Promise<Array<ChunkEmbeddingRecord & { distance: number }>>;
+
+  // Same idea as findSimilar, but scoped to one document's chunks only —
+  // this is a genuinely different operation, not findSimilar with an
+  // optional filter bolted on, because "search everything" and "search one
+  // document" should never be silently interchangeable at a call site. Used
+  // by the retrieval service (src/services/retrieval.ts) behind the
+  // POST /documents/:id/query route.
+  findSimilarInDocument(
+    documentId: string,
+    embedding: number[],
+    limit: number,
+  ): Promise<Array<ChunkEmbeddingRecord & { distance: number }>>;
+
+  // Atomically replaces every chunk belonging to one document: deletes
+  // whatever's currently stored for `documentId`, then inserts the new set,
+  // as a single database transaction (either both steps happen, or neither
+  // does). This is what makes calling POST /documents/:id/embed a second
+  // time for the same document safe — it re-chunks and re-embeds cleanly
+  // instead of piling up duplicate rows next to the old ones, and a crash
+  // mid-operation can never leave the document with a half-deleted,
+  // half-inserted set of chunks. See docs/week-2-day-2.md's "database
+  // transactions" section for the full reasoning.
+  replaceChunksForDocument(
+    documentId: string,
+    chunks: Array<Omit<ChunkEmbeddingRecord, 'id' | 'createdAt' | 'documentId'>>,
+  ): Promise<ChunkEmbeddingRecord[]>;
+
+  // Used by POST /documents/:id/query to distinguish "this document has
+  // never been embedded" (a 422 — the caller needs to call /embed first)
+  // from "this document has chunks, but none of them matched well" (a
+  // legitimate empty/weak result set from findSimilarInDocument). Those are
+  // different situations that deserve different responses, and
+  // findSimilarInDocument returning zero rows can't tell them apart on its
+  // own — an empty array is ambiguous between the two.
+  countChunksForDocument(documentId: string): Promise<number>;
 }
