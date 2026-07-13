@@ -4,19 +4,25 @@
 // An embedding is a list of numbers that represents a piece of text's
 // *meaning* in a way that's comparable geometrically. Two pieces of text
 // with similar meaning produce two number-lists that sit close together in
-// that (here, 1536-dimensional) space; unrelated text produces number-lists
-// that sit far apart. That's what makes semantic search possible — you're
-// comparing meaning, not matching keywords.
+// that vector space; unrelated text produces number-lists that sit far
+// apart. That's what makes semantic search possible — you're comparing
+// meaning, not matching keywords.
 //
-// WHY A MOCK GENERATOR TODAY, NOT A REAL EMBEDDING API?
-// Today's job (Week 2 Day 1) is proving that the pgvector *plumbing* works —
-// insert a vector, ask "what's nearest?", get a sane answer back. That's a
-// mechanical correctness question, answerable with any vector that behaves
-// consistently, without needing real semantic understanding. Wiring a real
-// embedding model (AWS Bedrock Titan) is a deliberately separate, later task
-// (Day 3) — bringing in a second new external API (auth, SDK, error
-// handling) on the same day as the database plumbing would blur what each
-// day is actually testing.
+// WHY DOES THIS MOCK GENERATOR STILL EXIST, NOW THAT DAY 3 HAS A REAL ONE?
+// Day 1's original plan was that Day 3 would "replace everything inside this
+// file with a real Bedrock API call" — that assumption turned out to be
+// half right (see src/services/embeddingGenerator.ts's header comment for
+// why: a real API call is necessarily async, which no same-signature swap
+// could hide). What actually happened is more useful than the original plan:
+// this file's logic is now wrapped behind the EmbeddingGenerator interface
+// as MockEmbeddingGenerator (src/services/mockEmbeddingGenerator.ts),
+// standing alongside BedrockEmbeddingGenerator (the real Titan v2 call) as a
+// second, equally legitimate implementation — not a placeholder waiting to
+// be deleted. Every test in this project (documents.routes.test.ts, the
+// repository integration tests, etc.) runs against this mock, which is
+// exactly why `pnpm test` never needs real AWS credentials to pass. The same
+// role InMemoryEmbeddingRepository plays for Postgres, this file plays for
+// Bedrock.
 //
 // WHY NOT JUST HASH THE WHOLE STRING (e.g. SHA-256 of the full text)?
 // That was the first instinct here, but it's actually wrong: cryptographic
@@ -24,14 +30,14 @@
 // produces a completely different output (the "avalanche effect") — two
 // near-identical sentences would hash to two *unrelated* vectors. That would
 // make it impossible to write a meaningful test asserting "similar text
-// ranks closer than different text," which is the entire point of today's
-// round-trip proof.
+// ranks closer than different text," which is the entire point of the
+// round-trip proofs this mock supports.
 //
 // WHAT THIS DOES INSTEAD: A "HASHING TRICK" BAG-OF-WORDS VECTOR
 // This is a real (if simplistic) technique used in classic NLP, sometimes
 // called "feature hashing" (used by tools like Vowpal Wabbit and scikit-
 // learn's HashingVectorizer): split the text into individual words, hash
-// EACH WORD separately to pick one of the 1536 dimensions, and nudge that
+// EACH WORD separately to pick one of the dimensions, and nudge that
 // dimension up or down. The result: two texts that share several words end
 // up with several of the *same* dimensions nudged, which makes their vectors
 // point in a more similar direction — i.e. a smaller cosine distance — while
@@ -39,19 +45,20 @@
 // touched, and no particular directional similarity. It's a crude stand-in
 // for "shared vocabulary implies related meaning," which is enough to
 // exercise real nearest-neighbor ordering without calling a real model.
-//
-// This entire function is intentionally isolated behind one small, stable
-// signature — `generateMockEmbedding(text) => number[]` — so that Day 3 can
-// replace everything inside this file with a real Bedrock API call without
-// any other file (the repository, the schema, or this file's callers)
-// needing to change at all.
 
 import { createHash } from 'node:crypto';
 
-// Matches schema.sql's `vector(1536)` column — chosen to match Amazon Titan
-// Embeddings v2's typical output dimension, so swapping in the real thing on
-// Day 3 doesn't require a schema change.
-const EMBEDDING_DIMENSIONS = 1536;
+// Matches chunk_embeddings.embedding's column dimension in
+// src/db/migrations/002_titan_v2_dimension.sql — 1024, Amazon Titan Text
+// Embeddings V2's default output size (configurable to 256/512/1024; 1024
+// is the highest-quality of the three, and AWS's own default). This MUST
+// stay in sync with the real column's dimension: the mock generator's
+// output gets inserted into the exact same `chunk_embeddings` table as real
+// Bedrock output in the Postgres-backed integration tests
+// (embeddingRepository.integration.test.ts, retrieval.integration.test.ts)
+// — a mismatched dimension here would make every INSERT in those tests fail
+// outright, not just produce lower-quality results.
+const EMBEDDING_DIMENSIONS = 1024;
 
 export function generateMockEmbedding(text: string): number[] {
   const embedding = new Array<number>(EMBEDDING_DIMENSIONS).fill(0);

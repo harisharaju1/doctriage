@@ -23,6 +23,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from '../routes/documents.js';
 import { InMemoryDocumentRepository } from '../repositories/inMemoryDocumentRepository.js';
 import { InMemoryEmbeddingRepository } from '../repositories/inMemoryEmbeddingRepository.js';
+import { MockEmbeddingGenerator } from '../services/mockEmbeddingGenerator.js';
+import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
 
 vi.mock('../services/classifier.js', () => ({
   classifyDocument: vi.fn(),
@@ -74,7 +76,12 @@ async function registerRoutes(app: FastifyInstance) {
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_SIZE_BYTES } });
   const repo = new InMemoryDocumentRepository();
   const embeddingRepo = new InMemoryEmbeddingRepository();
-  await app.register(documentRoutes, { repo, embeddingRepo });
+  // MockEmbeddingGenerator, not BedrockEmbeddingGenerator — route tests
+  // should never need real AWS credentials to pass. See that class's header
+  // comment, and src/services/embeddingGenerator.ts's, for why this
+  // interface exists at all.
+  const embeddingGenerator = new MockEmbeddingGenerator();
+  await app.register(documentRoutes, { repo, embeddingRepo, embeddingGenerator });
   await app.ready();
   return app;
 }
@@ -225,5 +232,46 @@ describe('document routes', () => {
     expect(good.documentId).toBeTruthy();
     expect(bad.status).toBe('rejected');
     expect(bad.error).toContain('Unsupported file type');
+  });
+
+  // Locks in a real gap found while manually testing Day 3's Bedrock
+  // integration: BedrockEmbeddingGenerator has already exhausted its own
+  // retries by the time an error reaches the route, so anything that throws
+  // past that point is a genuine final failure (bad credentials, a
+  // persistently unreachable Bedrock endpoint) — and without an explicit
+  // catch in the /embed route, that error fell through to Fastify's default
+  // handler as a bare 500 "Internal Server Error" instead of the typed,
+  // designed failure response every other external-API call in this
+  // project returns (compare /classify's 502 for a failed Claude call).
+  // This test uses its own app instance with a deliberately-throwing
+  // EmbeddingGenerator, rather than the shared MockEmbeddingGenerator every
+  // other test in this file uses, specifically to exercise that failure path.
+  it('POST /documents/:id/embed returns a typed 502 when the embedding generator fails', async () => {
+    const throwingGenerator: EmbeddingGenerator = {
+      async generate() {
+        throw new Error('Bedrock: The security token included in the request is invalid.');
+      },
+    };
+
+    const failingApp = Fastify();
+    await failingApp.register(multipart, { limits: { fileSize: MAX_UPLOAD_SIZE_BYTES } });
+    await failingApp.register(documentRoutes, {
+      repo: new InMemoryDocumentRepository(),
+      embeddingRepo: new InMemoryEmbeddingRepository(),
+      embeddingGenerator: throwingGenerator,
+    });
+    await failingApp.ready();
+
+    const uploadResponse = await failingApp.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
+    const { documentId } = uploadResponse.json();
+
+    const embedResponse = await failingApp.inject({
+      method: 'POST',
+      url: `/documents/${documentId}/embed`,
+    });
+
+    expect(embedResponse.statusCode).toBe(502);
+    expect(embedResponse.json().error).toBe('Embedding failed');
+    expect(embedResponse.json().reason).toContain('security token');
   });
 });

@@ -22,6 +22,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { PostgresEmbeddingRepository } from '../repositories/postgresEmbeddingRepository.js';
 import { findRelevantChunks } from '../services/retrieval.js';
 import { generateMockEmbedding } from '../services/embedding.js';
+import { MockEmbeddingGenerator } from '../services/mockEmbeddingGenerator.js';
 import type { Pool } from 'pg';
 
 const hasPostgresUrl = Boolean(process.env.POSTGRES_URL);
@@ -81,18 +82,21 @@ describe.skipIf(!hasPostgresUrl)('findRelevantChunks (integration)', () => {
     // search would likely surface this chunk first. A correctly scoped
     // search must never return it when we ask specifically about document A.
     //
-    // (Deliberately NOT the exact same phrase as the query text below —
-    // embeddingRepository.integration.test.ts also queries with that exact
-    // phrase, and vitest runs test files in parallel against the same live
-    // database, so an identical string here would create a cross-test-file
-    // collision. Close vocabulary overlap is enough to prove the point
-    // without that collision.)
+    // (Deliberately NOT the exact same phrase as the query text below, NOR
+    // the exact same "unrelated" filler text embeddingRepository.integration.test.ts
+    // uses for its own dissimilar chunk — vitest runs test files in parallel
+    // against the same live database, and that file's test asserts an exact
+    // count of chunkText matches across the WHOLE table via an unscoped
+    // search; an identical string here was caught making that count wrong
+    // — 4 matches instead of 3 — the first time these two files' data
+    // coexisted in the table at the same moment. Distinct wording avoids
+    // both collisions without weakening what either test actually proves.)
     await repo.replaceChunksForDocument(documentBId, [
       {
         chunkIndex: 0,
-        chunkText: 'Quarterly revenue increased due to strong enterprise software sales.',
+        chunkText: 'Employee satisfaction scores rose across every department this quarter.',
         embedding: generateMockEmbedding(
-          'Quarterly revenue increased due to strong enterprise software sales.',
+          'Employee satisfaction scores rose across every department this quarter.',
         ),
       },
       {
@@ -104,8 +108,14 @@ describe.skipIf(!hasPostgresUrl)('findRelevantChunks (integration)', () => {
       },
     ]);
 
+    // findRelevantChunks now takes an injected EmbeddingGenerator (Week 2
+    // Day 3) instead of always using generateMockEmbedding internally —
+    // MockEmbeddingGenerator here is the same one used to embed the test
+    // chunks above, satisfying the "question and chunks must go through the
+    // same generator" requirement documented in retrieval.ts.
     const matches = await findRelevantChunks(
       repo,
+      new MockEmbeddingGenerator(),
       documentAId,
       'police report vehicle collision claimant',
       5,
@@ -117,7 +127,7 @@ describe.skipIf(!hasPostgresUrl)('findRelevantChunks (integration)', () => {
     // chunk would have won this search outright.
     expect(matches.length).toBeGreaterThan(0);
     expect(matches.every((m) => m.documentId === documentAId)).toBe(true);
-    expect(matches.some((m) => m.chunkText.includes('Quarterly revenue'))).toBe(false);
+    expect(matches.some((m) => m.chunkText.includes('Employee satisfaction'))).toBe(false);
     expect(matches.some((m) => m.chunkText.includes('named the claimant directly'))).toBe(false);
   });
 });

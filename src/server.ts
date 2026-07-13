@@ -9,6 +9,7 @@ import { InMemoryDocumentRepository } from './repositories/inMemoryDocumentRepos
 import { PostgresEmbeddingRepository } from './repositories/postgresEmbeddingRepository.js';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from './routes/documents.js';
 import { healthRoutes } from './routes/health.js';
+import { BedrockEmbeddingGenerator } from './services/bedrockEmbeddingGenerator.js';
 
 const env = loadEnv();
 
@@ -30,7 +31,14 @@ const documentRepo = new InMemoryDocumentRepository();
 // "why one shared pool" comment: every repository that talks to Postgres
 // should draw from the same small set of pooled connections, not open its own.
 const embeddingRepo = new PostgresEmbeddingRepository(pool);
-await app.register(documentRoutes, { repo: documentRepo, embeddingRepo });
+// The REAL embedding path — as of Week 2 Day 3, production calls Bedrock's
+// Titan Text Embeddings V2, not the deterministic mock every test still
+// uses (MockEmbeddingGenerator). This is the one place in the whole app
+// that decides "which EmbeddingGenerator implementation is actually in
+// play" — everything downstream (routes, retrieval.ts) only ever sees the
+// EmbeddingGenerator interface, never this concrete class.
+const embeddingGenerator = new BedrockEmbeddingGenerator();
+await app.register(documentRoutes, { repo: documentRepo, embeddingRepo, embeddingGenerator });
 
 // As of Week 2 Day 1, Postgres is genuinely load-bearing (previously nothing
 // used it — see checkConnectivity() below, which used to include it as a

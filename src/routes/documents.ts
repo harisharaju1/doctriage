@@ -14,7 +14,7 @@ import {
 import { embedResponseSchema, queryRequestSchema, queryResponseSchema } from '../schemas/embedding.js';
 import { classifyDocument } from '../services/classifier.js';
 import { chunkText } from '../services/chunking.js';
-import { generateMockEmbedding } from '../services/embedding.js';
+import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
 import { extractText } from '../services/extraction.js';
 import { findRelevantChunks } from '../services/retrieval.js';
 import { deleteUpload, getUploadPath, saveUpload } from '../services/storage.js';
@@ -31,13 +31,19 @@ const DEFAULT_QUERY_MATCH_LIMIT = 5;
 interface DocumentRouteOptions {
   repo: DocumentRepository;
   embeddingRepo: EmbeddingRepository;
+  // Injected rather than imported directly — as of Week 2 Day 3, this can be
+  // MockEmbeddingGenerator (tests, zero AWS credentials needed) or
+  // BedrockEmbeddingGenerator (production, real Titan calls). See
+  // src/services/embeddingGenerator.ts's header for why this is an
+  // interface at all, not just a same-signature function swap.
+  embeddingGenerator: EmbeddingGenerator;
 }
 
 export async function documentRoutes(
   app: FastifyInstance,
   opts: DocumentRouteOptions,
 ): Promise<void> {
-  const { repo, embeddingRepo } = opts;
+  const { repo, embeddingRepo, embeddingGenerator } = opts;
 
   // Shared by POST /documents (single) and POST /documents/batch-upload —
   // validates one file, saves + extracts it, and returns a typed
@@ -267,21 +273,49 @@ export async function documentRoutes(
 
     const chunks = chunkText(record.extraction.text);
 
+    // As of Week 2 Day 3, embeddingGenerator.generate() is a real network
+    // call (Bedrock in production), not the synchronous mock function this
+    // used to be — so this can no longer be a plain `.map()` the way it was
+    // through Day 2. Deliberately SEQUENTIAL (`for...of` + `await`, not
+    // `Promise.all`) rather than firing every chunk's embedding call
+    // concurrently: concurrent calls would finish faster, but they'd also
+    // hit Bedrock's per-account rate limit sooner on a document with many
+    // chunks, defeating some of the point of the retry/backoff logic already
+    // built into BedrockEmbeddingGenerator. Sequential is slower but gentler
+    // and easier to reason about — a reasonable default to revisit if
+    // embedding latency on large documents ever becomes a real bottleneck.
+    //
+    // Wrapped in try/catch: BedrockEmbeddingGenerator has already exhausted
+    // its own retries (withRetry, inside generate()) by the time an error
+    // reaches here, so anything that throws past that point is a genuine,
+    // final failure — a bad/expired credential, a persistently unreachable
+    // Bedrock endpoint, etc. Without this catch, that error would fall
+    // through to Fastify's default handler as a bare 500 "Internal Server
+    // Error" — technically "not a crash," but not the typed, designed
+    // failure response every other external-API call in this project
+    // returns (compare /classify's 502 handling for a failed Claude call).
+    // Same 502 convention here: the upstream dependency failed, not the
+    // client's request.
+    const chunksWithEmbeddings: Array<{ chunkIndex: number; chunkText: string; embedding: number[] }> = [];
+    try {
+      for (const chunk of chunks) {
+        chunksWithEmbeddings.push({
+          chunkIndex: chunk.index,
+          chunkText: chunk.text,
+          embedding: await embeddingGenerator.generate(chunk.text),
+        });
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'Embedding generation failed';
+      return reply.status(502).send({ error: 'Embedding failed', reason });
+    }
+
     // replaceChunksForDocument (not insert-per-chunk) is what makes calling
     // this route a second time for the same document safe — it deletes any
     // previously-stored chunks and inserts the fresh set as one atomic
     // transaction, rather than piling up duplicates next to stale ones. See
     // the "database transactions" section of docs/week-2-day-2.md.
-    const inserted = await embeddingRepo.replaceChunksForDocument(
-      id,
-      chunks.map((chunk) => ({
-        chunkIndex: chunk.index,
-        chunkText: chunk.text,
-        // Still Day 1's mock generator — real embeddings arrive Day 3. The
-        // pipeline shape (chunk → embed → store) doesn't change when that swap happens.
-        embedding: generateMockEmbedding(chunk.text),
-      })),
-    );
+    const inserted = await embeddingRepo.replaceChunksForDocument(id, chunksWithEmbeddings);
 
     const response = embedResponseSchema.parse({
       documentId: id,
@@ -326,6 +360,7 @@ export async function documentRoutes(
 
       const matches = await findRelevantChunks(
         embeddingRepo,
+        embeddingGenerator,
         id,
         parsedBody.data.question,
         DEFAULT_QUERY_MATCH_LIMIT,
