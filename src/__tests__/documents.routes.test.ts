@@ -234,6 +234,83 @@ describe('document routes', () => {
     expect(bad.error).toContain('Unsupported file type');
   });
 
+  // Week 2 Day 4: /classify's request body gained an optional promptVersion
+  // field. This locks in that the route actually PASSES the caller's value
+  // through to classifyDocument, rather than silently ignoring it — the
+  // route-to-service wiring itself, distinct from promptVersion RESOLUTION
+  // logic (v1 vs v2 wording, unknown-version handling), which is covered by
+  // classifier.test.ts and promptRegistry.test.ts against the real
+  // (non-mocked) classifyDocument.
+  it('POST /documents/:id/classify passes promptVersion through to classifyDocument', async () => {
+    const { classifyDocument } = await import('../services/classifier.js');
+    vi.mocked(classifyDocument).mockResolvedValue({
+      status: 'success',
+      classification: { documentType: 'claim_form', confidence: 0.9, reasoning: 'reasoning' },
+    });
+
+    const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
+    const { documentId } = uploadResponse.json();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/documents/${documentId}/classify`,
+      payload: { promptVersion: 'v2' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    // classifyDocument(text, delayFn, promptVersion) — the third argument is
+    // what the route is responsible for forwarding correctly.
+    expect(vi.mocked(classifyDocument).mock.calls[0]![2]).toBe('v2');
+  });
+
+  it('POST /documents/:id/classify with no body still classifies using the default version', async () => {
+    const { classifyDocument } = await import('../services/classifier.js');
+    vi.mocked(classifyDocument).mockResolvedValue({
+      status: 'success',
+      classification: { documentType: 'claim_form', confidence: 0.9, reasoning: 'reasoning' },
+    });
+
+    const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
+    const { documentId } = uploadResponse.json();
+
+    // No payload at all — this is every pre-Day-4 caller's request shape,
+    // and it must keep working exactly as before.
+    const response = await app.inject({ method: 'POST', url: `/documents/${documentId}/classify` });
+
+    expect(response.statusCode).toBe(200);
+    expect(vi.mocked(classifyDocument).mock.calls[0]![2]).toBeUndefined();
+  });
+
+  it('POST /documents/:id/classify returns 400 when classifyDocument rejects an unknown promptVersion', async () => {
+    const { classifyDocument } = await import('../services/classifier.js');
+    // classifier.js is mocked at the module level in this file (see the top
+    // of this file), so classifyDocument's REAL getClassificationPrompt
+    // logic never runs here — that resolution behavior (v1/v2 selection,
+    // unknown-version errors) is covered directly against the real
+    // implementation in classifier.test.ts and promptRegistry.test.ts.
+    // What this test proves instead is the route's OWN responsibility: that
+    // when classifyDocument throws (whatever the reason), the route's
+    // try/catch converts that into a typed 400, not an unhandled 500 —
+    // simulated here by making the mock throw the same error shape the real
+    // getClassificationPrompt would for an unknown version.
+    vi.mocked(classifyDocument).mockRejectedValue(
+      new Error('Unknown classification prompt version: "v3". Known versions: v1, v2'),
+    );
+
+    const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
+    const { documentId } = uploadResponse.json();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/documents/${documentId}/classify`,
+      payload: { promptVersion: 'v3' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('Invalid prompt version');
+    expect(response.json().reason).toContain('Unknown classification prompt version');
+  });
+
   // Locks in a real gap found while manually testing Day 3's Bedrock
   // integration: BedrockEmbeddingGenerator has already exhausted its own
   // retries by the time an error reaches the route, so anything that throws

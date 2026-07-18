@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import type { DocumentRecord, DocumentRepository } from '../repositories/documentRepository.js';
 import type { EmbeddingRepository } from '../repositories/embeddingRepository.js';
+import { classifyRequestSchema } from '../schemas/classification.js';
 import { documentDetailSchema, uploadResponseSchema, type DocumentDetail } from '../schemas/document.js';
 import {
   batchGetRequestSchema,
@@ -221,8 +222,23 @@ export async function documentRoutes(
     return reply.send(response);
   });
 
-  app.post<{ Params: { id: string } }>('/documents/:id/classify', async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: unknown }>('/documents/:id/classify', async (request, reply) => {
     const { id } = request.params;
+
+    // Week 2 Day 4: this route's body is entirely OPTIONAL — every caller
+    // from before today sends no body at all, and that must keep working
+    // unchanged. `request.body` is `undefined` (no body sent) or `null`
+    // (some clients send an empty JSON body) in that case, neither of which
+    // classifyRequestSchema — a z.object() — would accept directly, so
+    // those are normalized to `{}` before parsing. A body that IS present
+    // but malformed (e.g. promptVersion sent as a number) still fails
+    // validation and returns a 400, same "validate early, fail clearly"
+    // pattern used by /documents/batch and /documents/:id/query.
+    const parsedBody = classifyRequestSchema.safeParse(request.body ?? {});
+    if (!parsedBody.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: parsedBody.error.issues });
+    }
+
     const record = await repo.findById(id);
 
     if (!record) {
@@ -236,7 +252,23 @@ export async function documentRoutes(
       });
     }
 
-    const result = await classifyDocument(record.extraction.text);
+    // promptVersion is undefined unless the caller explicitly requested one
+    // — classifyDocument treats undefined as "use the registry's current
+    // default," so this is a pure pass-through, not a place that needs to
+    // know what the default actually is.
+    let result;
+    try {
+      result = await classifyDocument(record.extraction.text, undefined, parsedBody.data.promptVersion);
+    } catch (err) {
+      // getClassificationPrompt (called inside classifyDocument) throws
+      // synchronously-from-the-caller's-perspective on an unknown
+      // promptVersion — e.g. { "promptVersion": "v3" } when only v1/v2
+      // exist. That's a client input error (they asked for something that
+      // doesn't exist), not an upstream Claude failure, so it's a 400 here,
+      // not the 502 used below for genuine Claude-call failures.
+      const reason = err instanceof Error ? err.message : 'Invalid prompt version';
+      return reply.status(400).send({ error: 'Invalid prompt version', reason });
+    }
 
     if (result.status === 'classification_failed') {
       return reply.status(502).send({

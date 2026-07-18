@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam, Tool } from '@anthropic-ai/sdk/resources/messages.js';
 import pino from 'pino';
+import { getClassificationPrompt } from '../prompts/registry.js';
 import { classificationSchema, type Classification } from '../schemas/classification.js';
 import { isRetriableError, withRetry, type DelayFn } from '../utils/retry.js';
 
@@ -66,11 +67,25 @@ export async function classifyDocument(
   text: string,
   // delayFn is injectable so tests can bypass real timers
   delayFn?: DelayFn,
+  // Week 2 Day 4: optional prompt version selector. undefined means "use
+  // whatever registry.ts currently calls CURRENT_CLASSIFICATION_VERSION" —
+  // every pre-Day-4 caller passes nothing here and keeps getting exactly the
+  // prompt they always did. An explicit value (e.g. from the eval harness,
+  // or a caller deliberately testing a variant) selects that version
+  // instead. getClassificationPrompt throws on an unknown version, so a
+  // typo'd version string surfaces immediately rather than silently
+  // classifying with the wrong prompt.
+  promptVersion?: string,
 ): Promise<ClassificationResult> {
+  // Resolved ONCE up front (not re-resolved per retry/corrective-retry
+  // attempt) so a single classifyDocument call is guaranteed to use one
+  // consistent prompt version throughout, including in the log lines below.
+  const prompt = getClassificationPrompt(promptVersion);
+
   const messages: MessageParam[] = [
     {
       role: 'user',
-      content: `You are classifying insurance documents. Analyse the following document text and classify it.\n\nDocument text:\n<document>\n${text}\n</document>`,
+      content: prompt.build(text),
     },
   ];
 
@@ -79,26 +94,35 @@ export async function classifyDocument(
   try {
     rawInput = await withRetry(
       async ({ attempt }) => {
-        log.info({ attempt, maxAttempts: MAX_ATTEMPTS }, 'calling Claude for classification');
+        log.info(
+          { attempt, maxAttempts: MAX_ATTEMPTS, promptVersion: prompt.version },
+          'calling Claude for classification',
+        );
         return callClaude(messages);
       },
       { maxAttempts: MAX_ATTEMPTS, baseDelayMs: BASE_DELAY_MS, shouldRetry: isRetriableError, delayFn },
     );
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Claude API call failed';
-    log.warn({ reason }, 'classification API call failed after all retries');
+    log.warn({ reason, promptVersion: prompt.version }, 'classification API call failed after all retries');
     return { status: 'classification_failed', reason };
   }
 
   // First validation attempt
   const parsed = classificationSchema.safeParse(rawInput);
   if (parsed.success) {
-    log.info({ documentType: parsed.data.documentType }, 'classification succeeded');
+    log.info(
+      { documentType: parsed.data.documentType, promptVersion: prompt.version },
+      'classification succeeded',
+    );
     return { status: 'success', classification: parsed.data };
   }
 
   // Corrective retry: send the schema error back to Claude once
-  log.warn({ error: parsed.error.message }, 'schema validation failed — attempting corrective retry');
+  log.warn(
+    { error: parsed.error.message, promptVersion: prompt.version },
+    'schema validation failed — attempting corrective retry',
+  );
 
   try {
     const assistantContent = [{ type: 'tool_use' as const, id: 'toolu_retry', name: TOOL_NAME, input: rawInput }];
@@ -115,16 +139,19 @@ export async function classifyDocument(
     const correctedParsed = classificationSchema.safeParse(correctedInput);
 
     if (correctedParsed.success) {
-      log.info({ documentType: correctedParsed.data.documentType }, 'corrective retry succeeded');
+      log.info(
+        { documentType: correctedParsed.data.documentType, promptVersion: prompt.version },
+        'corrective retry succeeded',
+      );
       return { status: 'success', classification: correctedParsed.data };
     }
 
     const reason = `Schema validation failed after corrective retry: ${correctedParsed.error.message}`;
-    log.warn({ reason }, 'corrective retry did not fix schema');
+    log.warn({ reason, promptVersion: prompt.version }, 'corrective retry did not fix schema');
     return { status: 'classification_failed', reason };
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Corrective retry API call failed';
-    log.warn({ reason }, 'corrective retry threw');
+    log.warn({ reason, promptVersion: prompt.version }, 'corrective retry threw');
     return { status: 'classification_failed', reason };
   }
 }
