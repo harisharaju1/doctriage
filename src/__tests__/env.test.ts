@@ -46,6 +46,13 @@ describe('loadEnv', () => {
     // docs/week-2-day-3.md for why this is v2, not the v1 the original plan
     // assumed (v1 no longer appears in Bedrock's model catalog at all).
     expect(env.AWS_BEDROCK_EMBEDDING_MODEL_ID).toBe('amazon.titan-embed-text-v2:0');
+    // New as of Week 2 Day 5 — the LLM-as-judge model, called through
+    // Bedrock's `anthropic.*` model catalog rather than the first-party
+    // Anthropic SDK classifier.ts uses. This is an INFERENCE PROFILE ID
+    // (`global.` prefix — this particular model has no `apac.` profile, per
+    // `aws bedrock list-inference-profiles`), not the bare foundation-model
+    // ID — see config/env.ts's comment for why the bare ID doesn't work.
+    expect(env.AWS_BEDROCK_JUDGE_MODEL_ID).toBe('global.anthropic.claude-sonnet-4-5-20250929-v1:0');
   });
 
   it('throws when ANTHROPIC_API_KEY is missing', () => {

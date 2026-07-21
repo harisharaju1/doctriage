@@ -38,6 +38,24 @@ describe('isBedrockRetriableError', () => {
     expect(isBedrockRetriableError(awsError('AccessDeniedException'))).toBe(false);
   });
 
+  // New as of Week 2 Day 5 — a narrow exception to the rule above, added
+  // after observing this exact transient failure live while wiring up the
+  // Bedrock LLM-as-judge: a newly-activated AWS Marketplace-listed model can
+  // intermittently 403 with this specific message even on a correctly
+  // permitted call. Matched on message text (not just the exception name)
+  // so a genuine credentials/policy AccessDeniedException — covered by the
+  // test above — still correctly returns false and fails fast.
+  it('returns true for AccessDeniedException whose message names an AWS Marketplace subscription issue', () => {
+    expect(
+      isBedrockRetriableError(
+        awsError(
+          'AccessDeniedException',
+          'Model access is denied ... Your AWS Marketplace subscription for this model cannot be completed at this time.',
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it('returns false for non-errors', () => {
     expect(isBedrockRetriableError('a string')).toBe(false);
     expect(isBedrockRetriableError(null)).toBe(false);

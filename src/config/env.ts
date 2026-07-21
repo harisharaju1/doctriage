@@ -37,6 +37,35 @@ const envSchema = z.object({
   // for why this is v2, not the v1 the original plan assumed (v1 no longer
   // appears in Bedrock's model catalog at all).
   AWS_BEDROCK_EMBEDDING_MODEL_ID: z.string().min(1).default('amazon.titan-embed-text-v2:0'),
+  // Week 2 Day 5: the LLM-as-judge model, called through the same Bedrock
+  // credentials/region above rather than the direct Anthropic SDK
+  // (@anthropic-ai/sdk) that classifier.ts uses. Two deliberate reasons to
+  // route the judge through Bedrock instead of just adding a second
+  // Anthropic API call: (1) it reuses AWS credentials/plumbing already
+  // required and validated above instead of introducing a second unrelated
+  // provider surface for one feature, and (2) it's a second concrete example
+  // of the "build vs buy vs prompt" tradeoff this project keeps coming back
+  // to — here, "which platform do I call the same underlying model through."
+  // Defaults to a Bedrock CROSS-REGION INFERENCE PROFILE ID, not the bare
+  // foundation-model ID (`anthropic.claude-sonnet-...`) — discovered the
+  // hard way: Bedrock rejected the bare model ID with "Invocation of model
+  // ID ... with on-demand throughput isn't supported. Retry your request
+  // with the ID or ARN of an inference profile that contains this model."
+  // Several current Claude models on Bedrock simply aren't invokable
+  // on-demand by their plain model ID at all — the inference profile
+  // (`<geo-prefix>.<model-id>`) is a distinct Bedrock resource with its own
+  // ARN, and the IAM policy's Resource array needs an `inference-profile/...`
+  // entry alongside the `foundation-model/...` one for bedrock:InvokeModel
+  // to succeed on it. The geo prefix isn't always the calling region's own
+  // geography, either — confirmed via `aws bedrock list-inference-profiles`
+  // that this specific model is only offered as a `global.`-prefixed
+  // profile (worldwide routing), not an `apac.` one, even though every
+  // other Bedrock call in this project uses ap-south-1 — worth not assuming
+  // the prefix and just listing what Bedrock actually offers per model.
+  // Kept out of hardcoded application code the same way
+  // AWS_BEDROCK_EMBEDDING_MODEL_ID is, so it can be swapped or pinned
+  // without a code change.
+  AWS_BEDROCK_JUDGE_MODEL_ID: z.string().min(1).default('global.anthropic.claude-sonnet-4-5-20250929-v1:0'),
 });
 
 export type Env = z.infer<typeof envSchema>;

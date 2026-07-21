@@ -31,6 +31,22 @@ export function isBedrockRetriableError(err: unknown): boolean {
   const retriableAwsErrorNames = ['ThrottlingException', 'ServiceUnavailableException', 'ModelTimeoutException'];
   if (retriableAwsErrorNames.includes(err.name)) return true;
 
+  // Week 2 Day 5: a narrow, message-matched exception to the "don't retry
+  // AccessDeniedException" rule below — discovered live while wiring up the
+  // Bedrock-based LLM-as-judge. A newly-activated AWS Marketplace-listed
+  // Bedrock model (which, as of today, is how every current Claude model on
+  // Bedrock is distributed) can intermittently reject an otherwise-valid,
+  // correctly-IAM-permitted InvokeModel call with an AccessDeniedException
+  // whose message says the account's "AWS Marketplace subscription for this
+  // model cannot be completed at this time" — observed in this project
+  // succeeding on roughly 3 of every 4 calls, with the failures scattered
+  // across several minutes, while the subscription was still settling on
+  // AWS's side. Matching on the SPECIFIC message (not blindly retrying every
+  // AccessDeniedException) matters: a real permission error — wrong IAM
+  // policy, wrong resource ARN — should still fail fast rather than burn
+  // through retries hiding a genuine misconfiguration.
+  if (err.name === 'AccessDeniedException' && err.message.includes('AWS Marketplace subscription')) return true;
+
   // Generic network errors — the same codes Week 1 Day 5's isRetriableError
   // already checks, reused here rather than duplicated, since a dropped
   // connection means the same thing regardless of which SDK was using it.

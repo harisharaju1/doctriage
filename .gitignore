@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 uploads/
+eval-runs/
 *.log
 learning-plan-final-July.md
 docs/day-2.md
