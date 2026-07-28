@@ -66,6 +66,12 @@ const envSchema = z.object({
   // AWS_BEDROCK_EMBEDDING_MODEL_ID is, so it can be swapped or pinned
   // without a code change.
   AWS_BEDROCK_JUDGE_MODEL_ID: z.string().min(1).default('global.anthropic.claude-sonnet-4-5-20250929-v1:0'),
+  // Week 3 Day 2: below this, /documents/:id/classify routes the result to
+  // the human review queue instead of trusting and persisting it — see
+  // docs/week-3-day-2.md. A config value (same z.coerce pattern as PORT)
+  // rather than a hardcoded constant, since the "right" threshold is
+  // expected to get tuned against real data, not decided once in code.
+  CLASSIFICATION_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.7),
 });
 
 export type Env = z.infer<typeof envSchema>;

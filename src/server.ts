@@ -6,6 +6,7 @@ import { loadEnv } from './config/env.js';
 import { pool } from './config/db.js';
 import { runMigrations } from './db/migrate.js';
 import { InMemoryDocumentRepository } from './repositories/inMemoryDocumentRepository.js';
+import { InMemoryReviewQueueRepository } from './repositories/inMemoryReviewQueueRepository.js';
 import { PostgresEmbeddingRepository } from './repositories/postgresEmbeddingRepository.js';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from './routes/documents.js';
 import { healthRoutes } from './routes/health.js';
@@ -38,7 +39,10 @@ const embeddingRepo = new PostgresEmbeddingRepository(pool);
 // play" — everything downstream (routes, retrieval.ts) only ever sees the
 // EmbeddingGenerator interface, never this concrete class.
 const embeddingGenerator = new BedrockEmbeddingGenerator();
-await app.register(documentRoutes, { repo: documentRepo, embeddingRepo, embeddingGenerator });
+// Week 3 Day 2: in-memory, same reasoning as documentRepo above — nothing
+// about review-queue entries needs Postgres/Mongo durability yet.
+const reviewQueueRepo = new InMemoryReviewQueueRepository();
+await app.register(documentRoutes, { repo: documentRepo, embeddingRepo, embeddingGenerator, reviewQueueRepo });
 
 // As of Week 2 Day 1, Postgres is genuinely load-bearing (previously nothing
 // used it — see checkConnectivity() below, which used to include it as a

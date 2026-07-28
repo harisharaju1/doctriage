@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
+import { loadEnv } from '../config/env.js';
 import type { DocumentRecord, DocumentRepository } from '../repositories/documentRepository.js';
 import type { EmbeddingRepository } from '../repositories/embeddingRepository.js';
-import { classifyRequestSchema } from '../schemas/classification.js';
+import type { ReviewQueueRepository } from '../repositories/reviewQueueRepository.js';
+import { classifyRequestSchema, type Classification } from '../schemas/classification.js';
 import { documentDetailSchema, uploadResponseSchema, type DocumentDetail } from '../schemas/document.js';
 import {
   batchGetRequestSchema,
@@ -13,12 +15,19 @@ import {
   type BatchUploadResult,
 } from '../schemas/documentBatch.js';
 import { embedResponseSchema, queryRequestSchema, queryResponseSchema } from '../schemas/embedding.js';
+import {
+  pendingReviewResponseSchema,
+  resolveReviewRequestSchema,
+  reviewQueueListResponseSchema,
+} from '../schemas/reviewQueue.js';
 import { classifyDocument } from '../services/classifier.js';
 import { chunkText } from '../services/chunking.js';
 import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
 import { extractText } from '../services/extraction.js';
 import { findRelevantChunks } from '../services/retrieval.js';
 import { deleteUpload, getUploadPath, saveUpload } from '../services/storage.js';
+
+const env = loadEnv();
 
 export const ALLOWED_MIME_TYPE = 'application/pdf';
 export const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -38,13 +47,16 @@ interface DocumentRouteOptions {
   // src/services/embeddingGenerator.ts's header for why this is an
   // interface at all, not just a same-signature function swap.
   embeddingGenerator: EmbeddingGenerator;
+  // Week 3 Day 2: source of truth for below-threshold classifications
+  // awaiting human resolution. See docs/week-3-day-2.md.
+  reviewQueueRepo: ReviewQueueRepository;
 }
 
 export async function documentRoutes(
   app: FastifyInstance,
   opts: DocumentRouteOptions,
 ): Promise<void> {
-  const { repo, embeddingRepo, embeddingGenerator } = opts;
+  const { repo, embeddingRepo, embeddingGenerator, reviewQueueRepo } = opts;
 
   // Shared by POST /documents (single) and POST /documents/batch-upload —
   // validates one file, saves + extracts it, and returns a typed
@@ -282,6 +294,29 @@ export async function documentRoutes(
       });
     }
 
+    // Week 3 Day 2: a schema-valid classification that's genuinely
+    // uncertain isn't trustworthy just because it parsed — route it to the
+    // human review queue instead of persisting it as-is. See
+    // docs/week-3-day-2.md's "Deciding what 'below threshold' actually does
+    // to the document record" for why this is NOT persisted onto
+    // record.classification: that field's meaning stays "trustworthy" only,
+    // never "trustworthy, unless you also happen to check the queue."
+    if (result.classification.confidence < env.CLASSIFICATION_CONFIDENCE_THRESHOLD) {
+      const reason = `confidence ${result.classification.confidence} is below the ${env.CLASSIFICATION_CONFIDENCE_THRESHOLD} threshold`;
+      log.info(
+        { confidence: result.classification.confidence, threshold: env.CLASSIFICATION_CONFIDENCE_THRESHOLD },
+        'confidence below threshold — routed to human review queue',
+      );
+      await reviewQueueRepo.enqueue({ documentId: id, classification: result.classification, reason });
+
+      const response = pendingReviewResponseSchema.parse({
+        status: 'pending_review',
+        classification: result.classification,
+        reason,
+      });
+      return reply.send(response);
+    }
+
     // Persist the classification onto the document record — previously this
     // route returned the result without saving it anywhere, which meant a
     // later GET or batch-retrieval call had no way to know a document had
@@ -418,6 +453,66 @@ export async function documentRoutes(
       });
 
       return reply.send(response);
+    },
+  );
+
+  // Week 3 Day 2: lists documents whose classification came back
+  // schema-valid but below CLASSIFICATION_CONFIDENCE_THRESHOLD, awaiting a
+  // human's resolution. See docs/week-3-day-2.md.
+  app.get('/review-queue', async (_request, reply) => {
+    const items = await reviewQueueRepo.list();
+
+    const response = reviewQueueListResponseSchema.parse({
+      items: items.map((item) => ({
+        documentId: item.documentId,
+        classification: item.classification,
+        reason: item.reason,
+        queuedAt: item.queuedAt.toISOString(),
+      })),
+    });
+
+    return reply.send(response);
+  });
+
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    '/review-queue/:id/resolve',
+    async (request, reply) => {
+      const { id } = request.params;
+      const log = request.log.child({ documentId: id });
+
+      const parsedBody = resolveReviewRequestSchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: 'Invalid request body', details: parsedBody.error.issues });
+      }
+
+      const entry = await reviewQueueRepo.findByDocumentId(id);
+      if (!entry) {
+        return reply.status(404).send({ error: `No pending review for document ${id}` });
+      }
+
+      const record = await repo.findById(id);
+      if (!record) {
+        return reply.status(404).send({ error: `Document ${id} not found` });
+      }
+
+      // A human resolution is, by construction, maximally trusted — there's
+      // no further retry/corrective-retry step past this point the way
+      // classifyDocument has for a model response. See docs/week-3-day-2.md's
+      // "What a human 'resolving' a review item actually produces" for why
+      // this builds a real Classification rather than persisting a bare
+      // documentType string — every downstream consumer of `classification`
+      // stays unaware of whether it came from Claude or a human.
+      const classification: Classification = {
+        documentType: parsedBody.data.documentType,
+        confidence: 1,
+        reasoning: 'Manually resolved via human review queue.',
+      };
+
+      await repo.save({ ...record, classification });
+      await reviewQueueRepo.resolve(id);
+      log.info({ documentType: classification.documentType }, 'review queue entry resolved');
+
+      return reply.send(classification);
     },
   );
 }

@@ -24,6 +24,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from '../routes/documents.js';
 import { InMemoryDocumentRepository } from '../repositories/inMemoryDocumentRepository.js';
 import { InMemoryEmbeddingRepository } from '../repositories/inMemoryEmbeddingRepository.js';
+import { InMemoryReviewQueueRepository } from '../repositories/inMemoryReviewQueueRepository.js';
 import { MockEmbeddingGenerator } from '../services/mockEmbeddingGenerator.js';
 import { generateMockEmbedding } from '../services/embedding.js';
 import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
@@ -83,7 +84,8 @@ async function registerRoutes(app: FastifyInstance) {
   // comment, and src/services/embeddingGenerator.ts's, for why this
   // interface exists at all.
   const embeddingGenerator = new MockEmbeddingGenerator();
-  await app.register(documentRoutes, { repo, embeddingRepo, embeddingGenerator });
+  const reviewQueueRepo = new InMemoryReviewQueueRepository();
+  await app.register(documentRoutes, { repo, embeddingRepo, embeddingGenerator, reviewQueueRepo });
   await app.ready();
   return app;
 }
@@ -338,6 +340,7 @@ describe('document routes', () => {
       repo: new InMemoryDocumentRepository(),
       embeddingRepo: new InMemoryEmbeddingRepository(),
       embeddingGenerator: throwingGenerator,
+      reviewQueueRepo: new InMemoryReviewQueueRepository(),
     });
     await failingApp.ready();
 
@@ -385,6 +388,7 @@ describe('document routes', () => {
       repo: new InMemoryDocumentRepository(),
       embeddingRepo: new InMemoryEmbeddingRepository(),
       embeddingGenerator: observingGenerator,
+      reviewQueueRepo: new InMemoryReviewQueueRepository(),
     });
     await app.ready();
 
