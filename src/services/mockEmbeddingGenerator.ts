@@ -16,6 +16,8 @@ import type { EmbeddingGenerator } from './embeddingGenerator.js';
 import { generateMockEmbedding } from './embedding.js';
 
 export class MockEmbeddingGenerator implements EmbeddingGenerator {
+  // logger is accepted (and ignored) purely to satisfy the
+  // EmbeddingGenerator interface — this implementation has nothing to log.
   async generate(text: string): Promise<number[]> {
     return generateMockEmbedding(text);
   }

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam, Tool } from '@anthropic-ai/sdk/resources/messages.js';
+import type { FastifyBaseLogger } from 'fastify';
 import pino from 'pino';
 import { getClassificationPrompt } from '../prompts/registry.js';
 import { classificationSchema, type Classification } from '../schemas/classification.js';
@@ -76,6 +77,19 @@ export async function classifyDocument(
   // typo'd version string surfaces immediately rather than silently
   // classifying with the wrong prompt.
   promptVersion?: string,
+  // Week 3 Day 1: optional request-scoped logger, bound with documentId by
+  // the calling route handler (see routes/documents.ts). Defaults to this
+  // file's own module-level `log` when omitted — the eval harness
+  // (eval/runEval.ts) calls classifyDocument directly with no HTTP request
+  // in play, so it has no documentId-bound logger to pass, and shouldn't
+  // need to construct a fake one just to call this function. See
+  // docs/week-3-day-1.md for the full reasoning.
+  // Typed as FastifyBaseLogger (a structural subset of pino.Logger — just
+  // the methods a request's `request.log` actually exposes), not
+  // pino.Logger itself, since that's the real type of what route handlers
+  // pass in (request.log.child(...)). The module-level `log` default below
+  // is a genuine pino.Logger, which satisfies this narrower interface fine.
+  logger: FastifyBaseLogger = log,
 ): Promise<ClassificationResult> {
   // Resolved ONCE up front (not re-resolved per retry/corrective-retry
   // attempt) so a single classifyDocument call is guaranteed to use one
@@ -94,7 +108,7 @@ export async function classifyDocument(
   try {
     rawInput = await withRetry(
       async ({ attempt }) => {
-        log.info(
+        logger.info(
           { attempt, maxAttempts: MAX_ATTEMPTS, promptVersion: prompt.version },
           'calling Claude for classification',
         );
@@ -104,14 +118,14 @@ export async function classifyDocument(
     );
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Claude API call failed';
-    log.warn({ reason, promptVersion: prompt.version }, 'classification API call failed after all retries');
+    logger.warn({ reason, promptVersion: prompt.version }, 'classification API call failed after all retries');
     return { status: 'classification_failed', reason };
   }
 
   // First validation attempt
   const parsed = classificationSchema.safeParse(rawInput);
   if (parsed.success) {
-    log.info(
+    logger.info(
       { documentType: parsed.data.documentType, promptVersion: prompt.version },
       'classification succeeded',
     );
@@ -119,7 +133,7 @@ export async function classifyDocument(
   }
 
   // Corrective retry: send the schema error back to Claude once
-  log.warn(
+  logger.warn(
     { error: parsed.error.message, promptVersion: prompt.version },
     'schema validation failed — attempting corrective retry',
   );
@@ -139,7 +153,7 @@ export async function classifyDocument(
     const correctedParsed = classificationSchema.safeParse(correctedInput);
 
     if (correctedParsed.success) {
-      log.info(
+      logger.info(
         { documentType: correctedParsed.data.documentType, promptVersion: prompt.version },
         'corrective retry succeeded',
       );
@@ -147,11 +161,11 @@ export async function classifyDocument(
     }
 
     const reason = `Schema validation failed after corrective retry: ${correctedParsed.error.message}`;
-    log.warn({ reason, promptVersion: prompt.version }, 'corrective retry did not fix schema');
+    logger.warn({ reason, promptVersion: prompt.version }, 'corrective retry did not fix schema');
     return { status: 'classification_failed', reason };
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Corrective retry API call failed';
-    log.warn({ reason, promptVersion: prompt.version }, 'corrective retry threw');
+    logger.warn({ reason, promptVersion: prompt.version }, 'corrective retry threw');
     return { status: 'classification_failed', reason };
   }
 }

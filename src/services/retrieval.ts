@@ -11,6 +11,7 @@
 // search work, the same separation of concerns already established between
 // routes and services/classifier.ts for the classification call.
 
+import type { FastifyBaseLogger } from 'fastify';
 import type { ChunkEmbeddingRecord, EmbeddingRepository } from '../repositories/embeddingRepository.js';
 import type { EmbeddingGenerator } from './embeddingGenerator.js';
 
@@ -20,6 +21,13 @@ export async function findRelevantChunks(
   documentId: string,
   questionText: string,
   limit: number,
+  // Week 3 Day 1: optional request-scoped logger, passed straight through
+  // to embeddingGenerator.generate(). findRelevantChunks itself logs
+  // nothing today — this parameter exists so the route handler has one
+  // consistent way to thread its documentId-bound logger through the whole
+  // call chain, not one that breaks at this function. See
+  // docs/week-3-day-1.md.
+  logger?: FastifyBaseLogger,
 ): Promise<Array<ChunkEmbeddingRecord & { distance: number }>> {
   // The question gets embedded with the exact same generator used to embed
   // the document's chunks (both are the SAME EmbeddingGenerator instance,
@@ -31,7 +39,7 @@ export async function findRelevantChunks(
   // is what guarantees that symmetry can never accidentally break — there's
   // only one EmbeddingGenerator in play per request, wired up once in
   // server.ts, not two different imports that could drift out of sync.
-  const questionEmbedding = await embeddingGenerator.generate(questionText);
+  const questionEmbedding = await embeddingGenerator.generate(questionText, logger);
 
   return embeddingRepo.findSimilarInDocument(documentId, questionEmbedding, limit);
 }

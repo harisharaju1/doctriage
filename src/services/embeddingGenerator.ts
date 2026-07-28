@@ -24,7 +24,16 @@
 // it in a DI container depending on environment (Development vs. Production)
 // — the same pattern already used here for IEmbeddingRepository /
 // IDocumentRepository via DocumentRouteOptions.
+//
+// Week 3 Day 1: generate() gains an optional `logger` parameter, the same
+// documentId-bound child logger the route handler threads through
+// classifyDocument. Optional for the same reason it's optional there — a
+// caller with no request-scoped logger (retrieval.ts's own default, the
+// eval harness) shouldn't be forced to construct one. See
+// docs/week-3-day-1.md.
+
+import type { FastifyBaseLogger } from 'fastify';
 
 export interface EmbeddingGenerator {
-  generate(text: string): Promise<number[]>;
+  generate(text: string, logger?: FastifyBaseLogger): Promise<number[]>;
 }

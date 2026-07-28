@@ -224,6 +224,11 @@ export async function documentRoutes(
 
   app.post<{ Params: { id: string }; Body: unknown }>('/documents/:id/classify', async (request, reply) => {
     const { id } = request.params;
+    // Week 3 Day 1: bound once, passed into every service call below, so
+    // every log line this request produces — including classifyDocument's
+    // retry/corrective-retry attempts — carries this documentId alongside
+    // Fastify's own reqId. See docs/week-3-day-1.md.
+    const log = request.log.child({ documentId: id });
 
     // Week 2 Day 4: this route's body is entirely OPTIONAL — every caller
     // from before today sends no body at all, and that must keep working
@@ -258,7 +263,7 @@ export async function documentRoutes(
     // know what the default actually is.
     let result;
     try {
-      result = await classifyDocument(record.extraction.text, undefined, parsedBody.data.promptVersion);
+      result = await classifyDocument(record.extraction.text, undefined, parsedBody.data.promptVersion, log);
     } catch (err) {
       // getClassificationPrompt (called inside classifyDocument) throws
       // synchronously-from-the-caller's-perspective on an unknown
@@ -288,6 +293,8 @@ export async function documentRoutes(
 
   app.post<{ Params: { id: string } }>('/documents/:id/embed', async (request, reply) => {
     const { id } = request.params;
+    // Week 3 Day 1: see the identical binding on /documents/:id/classify above.
+    const log = request.log.child({ documentId: id });
     const record = await repo.findById(id);
 
     if (!record) {
@@ -334,7 +341,7 @@ export async function documentRoutes(
         chunksWithEmbeddings.push({
           chunkIndex: chunk.index,
           chunkText: chunk.text,
-          embedding: await embeddingGenerator.generate(chunk.text),
+          embedding: await embeddingGenerator.generate(chunk.text, log),
         });
       }
     } catch (err) {
@@ -361,6 +368,8 @@ export async function documentRoutes(
     '/documents/:id/query',
     async (request, reply) => {
       const { id } = request.params;
+      // Week 3 Day 1: see the identical binding on /documents/:id/classify above.
+      const log = request.log.child({ documentId: id });
       const record = await repo.findById(id);
 
       if (!record) {
@@ -396,6 +405,7 @@ export async function documentRoutes(
         id,
         parsedBody.data.question,
         DEFAULT_QUERY_MATCH_LIMIT,
+        log,
       );
 
       const response = queryResponseSchema.parse({

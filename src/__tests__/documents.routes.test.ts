@@ -19,11 +19,13 @@
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
+import type pino from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from '../routes/documents.js';
 import { InMemoryDocumentRepository } from '../repositories/inMemoryDocumentRepository.js';
 import { InMemoryEmbeddingRepository } from '../repositories/inMemoryEmbeddingRepository.js';
 import { MockEmbeddingGenerator } from '../services/mockEmbeddingGenerator.js';
+import { generateMockEmbedding } from '../services/embedding.js';
 import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
 
 vi.mock('../services/classifier.js', () => ({
@@ -350,5 +352,54 @@ describe('document routes', () => {
     expect(embedResponse.statusCode).toBe(502);
     expect(embedResponse.json().error).toBe('Embedding failed');
     expect(embedResponse.json().reason).toContain('security token');
+  });
+
+  // Week 3 Day 1: locks in the actual correlation-ID wiring, not just that
+  // the route "has a logger somewhere" — a test double EmbeddingGenerator
+  // records the bindings of whatever logger it's called with (pino's
+  // `.bindings()` returns everything accumulated via `.child()`), proving
+  // the route's `request.log.child({ documentId: id })` is the exact logger
+  // instance threaded into embeddingGenerator.generate(), with the correct
+  // documentId, not a fresh/unbound logger. Needs a REAL pino logger (not
+  // this file's default no-op `Fastify()`, whose logger has no `.bindings()`
+  // to inspect) — `level: 'silent'` keeps test output clean while still
+  // giving us a real Logger instance to bind against.
+  it('POST /documents/:id/embed threads a documentId-bound logger into the embedding generator', async () => {
+    const seenBindings: Array<Record<string, unknown>> = [];
+    const observingGenerator: EmbeddingGenerator = {
+      async generate(text, logger) {
+        // .bindings() is a real pino.Logger method — request.log at runtime
+        // genuinely is one — but it's not part of the narrower
+        // FastifyBaseLogger interface generate() is typed against, hence
+        // the cast here rather than in application code.
+        if (logger) {
+          seenBindings.push((logger as unknown as pino.Logger).bindings());
+        }
+        return generateMockEmbedding(text);
+      },
+    };
+
+    const app = Fastify({ logger: { level: 'silent' } });
+    await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_SIZE_BYTES } });
+    await app.register(documentRoutes, {
+      repo: new InMemoryDocumentRepository(),
+      embeddingRepo: new InMemoryEmbeddingRepository(),
+      embeddingGenerator: observingGenerator,
+    });
+    await app.ready();
+
+    const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
+    const { documentId } = uploadResponse.json();
+
+    const embedResponse = await app.inject({ method: 'POST', url: `/documents/${documentId}/embed` });
+    expect(embedResponse.statusCode).toBe(200);
+
+    // Chunking splits the sample PDF's text into at least one chunk, so
+    // generate() — and therefore the bindings capture above — runs at
+    // least once.
+    expect(seenBindings.length).toBeGreaterThan(0);
+    for (const bindings of seenBindings) {
+      expect(bindings.documentId).toBe(documentId);
+    }
   });
 });

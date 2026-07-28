@@ -25,6 +25,7 @@
 // errors don't look like Anthropic SDK errors.
 
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import type { FastifyBaseLogger } from 'fastify';
 import pino from 'pino';
 import { loadEnv } from '../config/env.js';
 import { isBedrockRetriableError } from '../utils/awsRetry.js';
@@ -68,7 +69,12 @@ export class BedrockEmbeddingGenerator implements EmbeddingGenerator {
     });
   }
 
-  async generate(text: string): Promise<number[]> {
+  // Week 3 Day 1: optional request-scoped logger, defaulting to this file's
+  // module-level `log` when the caller (e.g. the eval harness, indirectly
+  // via retrieval.ts) has no documentId-bound logger to pass. See
+  // classifier.ts's classifyDocument for the identical pattern and the full
+  // reasoning in docs/week-3-day-1.md.
+  async generate(text: string, logger: FastifyBaseLogger = log): Promise<number[]> {
     const body = JSON.stringify({
       inputText: text,
       dimensions: EMBEDDING_DIMENSIONS,
@@ -90,7 +96,7 @@ export class BedrockEmbeddingGenerator implements EmbeddingGenerator {
 
     const result = await withRetry(
       async ({ attempt }) => {
-        log.info({ attempt, maxAttempts: MAX_ATTEMPTS }, 'calling Bedrock for embedding');
+        logger.info({ attempt, maxAttempts: MAX_ATTEMPTS }, 'calling Bedrock for embedding');
 
         // AbortSignal.timeout() here is the AWS SDK v3 equivalent of the
         // same mechanism classifier.ts already uses for the Anthropic SDK
