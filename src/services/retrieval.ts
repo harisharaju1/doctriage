@@ -13,6 +13,7 @@
 
 import type { FastifyBaseLogger } from 'fastify';
 import type { ChunkEmbeddingRecord, EmbeddingRepository } from '../repositories/embeddingRepository.js';
+import type { TokenUsage } from './costTracking.js';
 import type { EmbeddingGenerator } from './embeddingGenerator.js';
 
 export async function findRelevantChunks(
@@ -28,7 +29,11 @@ export async function findRelevantChunks(
   // call chain, not one that breaks at this function. See
   // docs/week-3-day-1.md.
   logger?: FastifyBaseLogger,
-): Promise<Array<ChunkEmbeddingRecord & { distance: number }>> {
+  // Week 3 Day 3: the question embedding is a real Bedrock call and costs
+  // real tokens too — its usage now travels back out to the caller
+  // alongside the matches, the same way document-chunk embedding usage
+  // does. See docs/week-3-day-3.md.
+): Promise<{ matches: Array<ChunkEmbeddingRecord & { distance: number }>; usage: TokenUsage }> {
   // The question gets embedded with the exact same generator used to embed
   // the document's chunks (both are the SAME EmbeddingGenerator instance,
   // injected from server.ts). This has to match: a question embedded with
@@ -39,7 +44,8 @@ export async function findRelevantChunks(
   // is what guarantees that symmetry can never accidentally break — there's
   // only one EmbeddingGenerator in play per request, wired up once in
   // server.ts, not two different imports that could drift out of sync.
-  const questionEmbedding = await embeddingGenerator.generate(questionText, logger);
+  const { embedding: questionEmbedding, usage } = await embeddingGenerator.generate(questionText, logger);
 
-  return embeddingRepo.findSimilarInDocument(documentId, questionEmbedding, limit);
+  const matches = await embeddingRepo.findSimilarInDocument(documentId, questionEmbedding, limit);
+  return { matches, usage };
 }

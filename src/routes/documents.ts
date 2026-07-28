@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { loadEnv } from '../config/env.js';
+import type { CostRepository } from '../repositories/costRepository.js';
 import type { DocumentRecord, DocumentRepository } from '../repositories/documentRepository.js';
 import type { EmbeddingRepository } from '../repositories/embeddingRepository.js';
 import type { ReviewQueueRepository } from '../repositories/reviewQueueRepository.js';
@@ -15,13 +16,15 @@ import {
   type BatchUploadResult,
 } from '../schemas/documentBatch.js';
 import { embedResponseSchema, queryRequestSchema, queryResponseSchema } from '../schemas/embedding.js';
+import { metricsResponseSchema } from '../schemas/metrics.js';
 import {
   pendingReviewResponseSchema,
   resolveReviewRequestSchema,
   reviewQueueListResponseSchema,
 } from '../schemas/reviewQueue.js';
-import { classifyDocument } from '../services/classifier.js';
+import { classifyDocument, MODEL as CLASSIFICATION_MODEL } from '../services/classifier.js';
 import { chunkText } from '../services/chunking.js';
+import { computeCostUsd } from '../services/costTracking.js';
 import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
 import { extractText } from '../services/extraction.js';
 import { findRelevantChunks } from '../services/retrieval.js';
@@ -50,13 +53,16 @@ interface DocumentRouteOptions {
   // Week 3 Day 2: source of truth for below-threshold classifications
   // awaiting human resolution. See docs/week-3-day-2.md.
   reviewQueueRepo: ReviewQueueRepository;
+  // Week 3 Day 3: one record per billable call, surfaced via GET /metrics.
+  // See docs/week-3-day-3.md.
+  costRepo: CostRepository;
 }
 
 export async function documentRoutes(
   app: FastifyInstance,
   opts: DocumentRouteOptions,
 ): Promise<void> {
-  const { repo, embeddingRepo, embeddingGenerator, reviewQueueRepo } = opts;
+  const { repo, embeddingRepo, embeddingGenerator, reviewQueueRepo, costRepo } = opts;
 
   // Shared by POST /documents (single) and POST /documents/batch-upload —
   // validates one file, saves + extracts it, and returns a typed
@@ -287,6 +293,18 @@ export async function documentRoutes(
       return reply.status(400).send({ error: 'Invalid prompt version', reason });
     }
 
+    // Week 3 Day 3: recorded regardless of outcome — a classification that
+    // ultimately failed after retries still spent real tokens getting
+    // there. See docs/week-3-day-3.md's "Usage has to be summed across
+    // retries".
+    await costRepo.record({
+      documentId: id,
+      stage: 'classification',
+      modelId: CLASSIFICATION_MODEL,
+      usage: result.usage,
+      costUsd: computeCostUsd(CLASSIFICATION_MODEL, result.usage),
+    });
+
     if (result.status === 'classification_failed') {
       return reply.status(502).send({
         error: 'Classification failed',
@@ -373,10 +391,17 @@ export async function documentRoutes(
     const chunksWithEmbeddings: Array<{ chunkIndex: number; chunkText: string; embedding: number[] }> = [];
     try {
       for (const chunk of chunks) {
-        chunksWithEmbeddings.push({
-          chunkIndex: chunk.index,
-          chunkText: chunk.text,
-          embedding: await embeddingGenerator.generate(chunk.text, log),
+        const { embedding, usage } = await embeddingGenerator.generate(chunk.text, log);
+        chunksWithEmbeddings.push({ chunkIndex: chunk.index, chunkText: chunk.text, embedding });
+        // Week 3 Day 3: one record per chunk, not one aggregate per
+        // document — each chunk is its own billable Bedrock call. See
+        // docs/week-3-day-3.md.
+        await costRepo.record({
+          documentId: id,
+          stage: 'embedding',
+          modelId: env.AWS_BEDROCK_EMBEDDING_MODEL_ID,
+          usage,
+          costUsd: computeCostUsd(env.AWS_BEDROCK_EMBEDDING_MODEL_ID, usage),
         });
       }
     } catch (err) {
@@ -434,7 +459,7 @@ export async function documentRoutes(
         });
       }
 
-      const matches = await findRelevantChunks(
+      const { matches, usage } = await findRelevantChunks(
         embeddingRepo,
         embeddingGenerator,
         id,
@@ -442,6 +467,18 @@ export async function documentRoutes(
         DEFAULT_QUERY_MATCH_LIMIT,
         log,
       );
+
+      // Week 3 Day 3: the question embedding is a real Bedrock call too —
+      // recorded under the same 'embedding' stage as document-chunk
+      // embedding, deliberately not a separate 'query' stage. See
+      // docs/week-3-day-3.md.
+      await costRepo.record({
+        documentId: id,
+        stage: 'embedding',
+        modelId: env.AWS_BEDROCK_EMBEDDING_MODEL_ID,
+        usage,
+        costUsd: computeCostUsd(env.AWS_BEDROCK_EMBEDDING_MODEL_ID, usage),
+      });
 
       const response = queryResponseSchema.parse({
         documentId: id,
@@ -515,4 +552,43 @@ export async function documentRoutes(
       return reply.send(classification);
     },
   );
+
+  // Week 3 Day 3: total cost, cost + request count per stage, and average
+  // cost per document, aggregated from every CostRecord recorded so far.
+  // See docs/week-3-day-3.md.
+  app.get('/metrics', async (_request, reply) => {
+    const records = await costRepo.list();
+
+    let totalCostUsd = 0;
+    const byStage = new Map<string, { costUsd: number; requestCount: number }>();
+    const documentIds = new Set<string>();
+
+    for (const record of records) {
+      documentIds.add(record.documentId);
+
+      const stageEntry = byStage.get(record.stage) ?? { costUsd: 0, requestCount: 0 };
+      stageEntry.requestCount += 1;
+      // costUsd: null (unmapped model) is excluded from dollar totals but
+      // the record still counted above toward requestCount — see
+      // costTracking.ts's "never break the request" design.
+      if (record.costUsd !== null) {
+        stageEntry.costUsd += record.costUsd;
+        totalCostUsd += record.costUsd;
+      }
+      byStage.set(record.stage, stageEntry);
+    }
+
+    const response = metricsResponseSchema.parse({
+      totalCostUsd,
+      requestCount: records.length,
+      byStage: [...byStage.entries()].map(([stage, { costUsd, requestCount }]) => ({
+        stage,
+        costUsd,
+        requestCount,
+      })),
+      averageCostPerDocumentUsd: documentIds.size > 0 ? totalCostUsd / documentIds.size : 0,
+    });
+
+    return reply.send(response);
+  });
 }

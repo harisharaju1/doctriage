@@ -14,7 +14,18 @@ describe('MockEmbeddingGenerator', () => {
 
     const result = await generator.generate(text);
 
-    expect(result).toEqual(generateMockEmbedding(text));
+    expect(result.embedding).toEqual(generateMockEmbedding(text));
+  });
+
+  // Week 3 Day 3: usage is a deterministic estimate, not real token counts
+  // (mock has no network call to report real usage from) — just confirming
+  // the shape is present and sane.
+  it('returns a deterministic estimated usage alongside the embedding', async () => {
+    const generator = new MockEmbeddingGenerator();
+    const result = await generator.generate('a claim about a vehicle collision');
+
+    expect(result.usage.inputTokens).toBeGreaterThan(0);
+    expect(result.usage.outputTokens).toBe(0);
   });
 
   it('returns a promise, satisfying the EmbeddingGenerator interface', () => {

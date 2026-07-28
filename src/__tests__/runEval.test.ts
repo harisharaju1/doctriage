@@ -55,6 +55,10 @@ function successResult(overrides: Partial<Classification>): ClassificationResult
       reasoning: 'default reasoning',
       ...overrides,
     },
+    // Week 3 Day 3: runEval() itself never reads usage — it's the eval
+    // harness, not a route recording cost — so an arbitrary fixed value is
+    // fine here, just needed to satisfy ClassificationResult's shape.
+    usage: { inputTokens: 100, outputTokens: 20 },
   };
 }
 

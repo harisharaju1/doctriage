@@ -12,13 +12,22 @@
 // EmbeddingGenerator implementation identically (`await generator.generate(...)`)
 // regardless of whether the real implementation is actually asynchronous.
 
+import type { TokenUsage } from './costTracking.js';
 import type { EmbeddingGenerator } from './embeddingGenerator.js';
 import { generateMockEmbedding } from './embedding.js';
 
 export class MockEmbeddingGenerator implements EmbeddingGenerator {
   // logger is accepted (and ignored) purely to satisfy the
   // EmbeddingGenerator interface — this implementation has nothing to log.
-  async generate(text: string): Promise<number[]> {
-    return generateMockEmbedding(text);
+  //
+  // Week 3 Day 3: usage is a deterministic, rough estimate
+  // (~4 chars/token, the commonly-cited rule of thumb) — good enough to
+  // exercise the cost-recording PLUMBING in tests, not a claim about real
+  // token accuracy, which was never mock's job. See docs/week-3-day-3.md.
+  async generate(text: string): Promise<{ embedding: number[]; usage: TokenUsage }> {
+    return {
+      embedding: generateMockEmbedding(text),
+      usage: { inputTokens: Math.ceil(text.length / 4), outputTokens: 0 },
+    };
   }
 }

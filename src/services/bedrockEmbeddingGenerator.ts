@@ -30,6 +30,7 @@ import pino from 'pino';
 import { loadEnv } from '../config/env.js';
 import { isBedrockRetriableError } from '../utils/awsRetry.js';
 import { withRetry } from '../utils/retry.js';
+import type { TokenUsage } from './costTracking.js';
 import type { EmbeddingGenerator } from './embeddingGenerator.js';
 
 const env = loadEnv();
@@ -74,7 +75,7 @@ export class BedrockEmbeddingGenerator implements EmbeddingGenerator {
   // via retrieval.ts) has no documentId-bound logger to pass. See
   // classifier.ts's classifyDocument for the identical pattern and the full
   // reasoning in docs/week-3-day-1.md.
-  async generate(text: string, logger: FastifyBaseLogger = log): Promise<number[]> {
+  async generate(text: string, logger: FastifyBaseLogger = log): Promise<{ embedding: number[]; usage: TokenUsage }> {
     const body = JSON.stringify({
       inputText: text,
       dimensions: EMBEDDING_DIMENSIONS,
@@ -111,7 +112,10 @@ export class BedrockEmbeddingGenerator implements EmbeddingGenerator {
         }
 
         const parsed = JSON.parse(new TextDecoder().decode(response.body)) as TitanEmbedResponseBody;
-        return parsed.embedding;
+        // Titan reports only input tokens — an embedding call has no
+        // completion, so outputTokens is always 0. See
+        // docs/week-3-day-3.md's "Embeddings have no 'output tokens'".
+        return { embedding: parsed.embedding, usage: { inputTokens: parsed.inputTextTokenCount, outputTokens: 0 } };
       },
       {
         maxAttempts: MAX_ATTEMPTS,

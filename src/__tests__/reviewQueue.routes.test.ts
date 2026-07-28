@@ -14,6 +14,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from '../routes/documents.js';
+import { InMemoryCostRepository } from '../repositories/inMemoryCostRepository.js';
 import { InMemoryDocumentRepository } from '../repositories/inMemoryDocumentRepository.js';
 import { InMemoryEmbeddingRepository } from '../repositories/inMemoryEmbeddingRepository.js';
 import { InMemoryReviewQueueRepository } from '../repositories/inMemoryReviewQueueRepository.js';
@@ -21,7 +22,11 @@ import { MockEmbeddingGenerator } from '../services/mockEmbeddingGenerator.js';
 
 vi.mock('../services/classifier.js', () => ({
   classifyDocument: vi.fn(),
+  MODEL: 'claude-haiku-4-5-20251001',
 }));
+
+// Week 3 Day 3: see documents.routes.test.ts's identical constant.
+const MOCK_USAGE = { inputTokens: 100, outputTokens: 20 };
 
 const MINIMAL_PDF_WITH_TEXT = `%PDF-1.4
 1 0 obj
@@ -71,6 +76,7 @@ async function buildApp(): Promise<FastifyInstance> {
     embeddingRepo: new InMemoryEmbeddingRepository(),
     embeddingGenerator: new MockEmbeddingGenerator(),
     reviewQueueRepo: new InMemoryReviewQueueRepository(),
+    costRepo: new InMemoryCostRepository(),
   });
   await app.ready();
   return app;
@@ -89,6 +95,7 @@ describe('human review queue', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'other', confidence: 0.4, reasoning: 'genuinely ambiguous content' },
+      usage: MOCK_USAGE,
     });
 
     const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
@@ -119,6 +126,7 @@ describe('human review queue', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'claim_form', confidence: 0.7, reasoning: 'clear match' },
+      usage: MOCK_USAGE,
     });
 
     const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
@@ -138,6 +146,7 @@ describe('human review queue', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'other', confidence: 0.3, reasoning: 'unclear' },
+      usage: MOCK_USAGE,
     });
 
     const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
@@ -185,6 +194,7 @@ describe('human review queue', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'other', confidence: 0.3, reasoning: 'unclear' },
+      usage: MOCK_USAGE,
     });
 
     const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });

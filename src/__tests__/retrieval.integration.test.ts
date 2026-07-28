@@ -113,7 +113,7 @@ describe.skipIf(!hasPostgresUrl)('findRelevantChunks (integration)', () => {
     // MockEmbeddingGenerator here is the same one used to embed the test
     // chunks above, satisfying the "question and chunks must go through the
     // same generator" requirement documented in retrieval.ts.
-    const matches = await findRelevantChunks(
+    const { matches } = await findRelevantChunks(
       repo,
       new MockEmbeddingGenerator(),
       documentAId,

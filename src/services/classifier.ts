@@ -4,6 +4,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import pino from 'pino';
 import { getClassificationPrompt } from '../prompts/registry.js';
 import { classificationSchema, type Classification } from '../schemas/classification.js';
+import type { TokenUsage } from './costTracking.js';
 import { isRetriableError, withRetry, type DelayFn } from '../utils/retry.js';
 
 const log = pino({ name: 'classifier' });
@@ -32,19 +33,31 @@ const CLASSIFY_TOOL: Tool = {
   },
 };
 
-const MODEL = 'claude-haiku-4-5-20251001';
+// Exported so routes.ts can attribute cost records to the exact model ID
+// costTracking.ts's pricing table keys off — avoids a second hardcoded copy
+// of this string drifting out of sync with the one actually sent to Claude.
+export const MODEL = 'claude-haiku-4-5-20251001';
 const TOOL_NAME = 'classify_document';
 const TIMEOUT_MS = 30_000;
 const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 1_000;
 
+// Week 3 Day 3: usage is present on BOTH variants — a classification that
+// ultimately failed after retries still spent real tokens getting there.
+// See docs/week-3-day-3.md's "Usage has to be summed across retries".
 export type ClassificationResult =
-  | { status: 'success'; classification: Classification }
-  | { status: 'classification_failed'; reason: string };
+  | { status: 'success'; classification: Classification; usage: TokenUsage }
+  | { status: 'classification_failed'; reason: string; usage: TokenUsage };
 
 const client = new Anthropic();
 
-async function callClaude(messages: MessageParam[]): Promise<unknown> {
+const ZERO_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+
+function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
+  return { inputTokens: a.inputTokens + b.inputTokens, outputTokens: a.outputTokens + b.outputTokens };
+}
+
+async function callClaude(messages: MessageParam[]): Promise<{ input: unknown; usage: TokenUsage }> {
   const response = await client.messages.create(
     {
       model: MODEL,
@@ -56,12 +69,21 @@ async function callClaude(messages: MessageParam[]): Promise<unknown> {
     { signal: AbortSignal.timeout(TIMEOUT_MS) },
   );
 
+  const usage: TokenUsage = {
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  };
+
   const toolUseBlock = response.content.find((block) => block.type === 'tool_use');
   if (!toolUseBlock || toolUseBlock.type !== 'tool_use') {
+    // Note: this specific attempt's usage is lost here — a genuinely rare
+    // edge case (Claude responded but didn't call the forced tool), not
+    // worth threading usage through an exception for. See
+    // docs/week-3-day-3.md's usage-accumulation note.
     throw new Error('No tool use block in Claude response');
   }
 
-  return toolUseBlock.input;
+  return { input: toolUseBlock.input, usage };
 }
 
 export async function classifyDocument(
@@ -103,6 +125,15 @@ export async function classifyDocument(
     },
   ];
 
+  // Week 3 Day 3: accumulated across every completed Claude response within
+  // this call — initial attempt, withRetry's retries, and the corrective
+  // retry — since each one that actually got a response back cost real
+  // tokens, whether or not its output was ultimately used. withRetry itself
+  // only returns the final resolved value, not a running total across
+  // attempts, so this closure variable is mutated as a side effect inside
+  // the retryable callback below instead.
+  let totalUsage: TokenUsage = ZERO_USAGE;
+
   let rawInput: unknown;
 
   try {
@@ -112,14 +143,16 @@ export async function classifyDocument(
           { attempt, maxAttempts: MAX_ATTEMPTS, promptVersion: prompt.version },
           'calling Claude for classification',
         );
-        return callClaude(messages);
+        const { input, usage } = await callClaude(messages);
+        totalUsage = addUsage(totalUsage, usage);
+        return input;
       },
       { maxAttempts: MAX_ATTEMPTS, baseDelayMs: BASE_DELAY_MS, shouldRetry: isRetriableError, delayFn },
     );
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Claude API call failed';
     logger.warn({ reason, promptVersion: prompt.version }, 'classification API call failed after all retries');
-    return { status: 'classification_failed', reason };
+    return { status: 'classification_failed', reason, usage: totalUsage };
   }
 
   // First validation attempt
@@ -129,7 +162,7 @@ export async function classifyDocument(
       { documentType: parsed.data.documentType, promptVersion: prompt.version },
       'classification succeeded',
     );
-    return { status: 'success', classification: parsed.data };
+    return { status: 'success', classification: parsed.data, usage: totalUsage };
   }
 
   // Corrective retry: send the schema error back to Claude once
@@ -149,7 +182,8 @@ export async function classifyDocument(
       },
     ];
 
-    const correctedInput = await callClaude(correctiveMessages);
+    const { input: correctedInput, usage: correctiveUsage } = await callClaude(correctiveMessages);
+    totalUsage = addUsage(totalUsage, correctiveUsage);
     const correctedParsed = classificationSchema.safeParse(correctedInput);
 
     if (correctedParsed.success) {
@@ -157,15 +191,15 @@ export async function classifyDocument(
         { documentType: correctedParsed.data.documentType, promptVersion: prompt.version },
         'corrective retry succeeded',
       );
-      return { status: 'success', classification: correctedParsed.data };
+      return { status: 'success', classification: correctedParsed.data, usage: totalUsage };
     }
 
     const reason = `Schema validation failed after corrective retry: ${correctedParsed.error.message}`;
     logger.warn({ reason, promptVersion: prompt.version }, 'corrective retry did not fix schema');
-    return { status: 'classification_failed', reason };
+    return { status: 'classification_failed', reason, usage: totalUsage };
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Corrective retry API call failed';
     logger.warn({ reason, promptVersion: prompt.version }, 'corrective retry threw');
-    return { status: 'classification_failed', reason };
+    return { status: 'classification_failed', reason, usage: totalUsage };
   }
 }

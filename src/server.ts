@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import { loadEnv } from './config/env.js';
 import { pool } from './config/db.js';
 import { runMigrations } from './db/migrate.js';
+import { InMemoryCostRepository } from './repositories/inMemoryCostRepository.js';
 import { InMemoryDocumentRepository } from './repositories/inMemoryDocumentRepository.js';
 import { InMemoryReviewQueueRepository } from './repositories/inMemoryReviewQueueRepository.js';
 import { PostgresEmbeddingRepository } from './repositories/postgresEmbeddingRepository.js';
@@ -42,7 +43,15 @@ const embeddingGenerator = new BedrockEmbeddingGenerator();
 // Week 3 Day 2: in-memory, same reasoning as documentRepo above — nothing
 // about review-queue entries needs Postgres/Mongo durability yet.
 const reviewQueueRepo = new InMemoryReviewQueueRepository();
-await app.register(documentRoutes, { repo: documentRepo, embeddingRepo, embeddingGenerator, reviewQueueRepo });
+// Week 3 Day 3: in-memory, same reasoning as reviewQueueRepo above.
+const costRepo = new InMemoryCostRepository();
+await app.register(documentRoutes, {
+  repo: documentRepo,
+  embeddingRepo,
+  embeddingGenerator,
+  reviewQueueRepo,
+  costRepo,
+});
 
 // As of Week 2 Day 1, Postgres is genuinely load-bearing (previously nothing
 // used it — see checkConnectivity() below, which used to include it as a

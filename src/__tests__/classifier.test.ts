@@ -33,6 +33,11 @@ vi.mock('@anthropic-ai/sdk', () => ({
 function claudeToolResponse(input: unknown) {
   return {
     content: [{ type: 'tool_use', id: 'toolu_1', name: 'classify_document', input }],
+    // Week 3 Day 3: callClaude reads response.usage.input_tokens/output_tokens
+    // — a real Anthropic SDK response always has this, so the fake needs it
+    // too, or callClaude throws before classifyDocument ever gets a chance
+    // to return.
+    usage: { input_tokens: 50, output_tokens: 20 },
   };
 }
 
@@ -90,7 +95,11 @@ describe('classifyDocument', () => {
 
     const result = await classifyDocument('some document text');
 
-    expect(result).toEqual({ status: 'success', classification: VALID_CLASSIFICATION });
+    expect(result).toEqual({
+      status: 'success',
+      classification: VALID_CLASSIFICATION,
+      usage: { inputTokens: 50, outputTokens: 20 },
+    });
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });

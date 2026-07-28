@@ -22,6 +22,7 @@ import multipart from '@fastify/multipart';
 import type pino from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from '../routes/documents.js';
+import { InMemoryCostRepository } from '../repositories/inMemoryCostRepository.js';
 import { InMemoryDocumentRepository } from '../repositories/inMemoryDocumentRepository.js';
 import { InMemoryEmbeddingRepository } from '../repositories/inMemoryEmbeddingRepository.js';
 import { InMemoryReviewQueueRepository } from '../repositories/inMemoryReviewQueueRepository.js';
@@ -31,6 +32,10 @@ import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
 
 vi.mock('../services/classifier.js', () => ({
   classifyDocument: vi.fn(),
+  // Week 3 Day 3: documents.ts imports MODEL for cost attribution — the mock
+  // factory replaces the whole module, so this needs to exist too, or
+  // routes.ts's CLASSIFICATION_MODEL constant would be undefined.
+  MODEL: 'claude-haiku-4-5-20251001',
 }));
 
 // Reused from extraction.test.ts's fixture pattern — a minimal, valid,
@@ -70,6 +75,12 @@ startxref
 459
 %%EOF`;
 
+// Week 3 Day 3: classifyDocument's ClassificationResult now requires usage
+// on every variant — this is a fixed, arbitrary stand-in used across every
+// mocked classifyDocument resolution in this file, since these tests are
+// about routing/persistence behavior, not real token counts.
+const MOCK_USAGE = { inputTokens: 100, outputTokens: 20 };
+
 function buildApp(): FastifyInstance {
   const app = Fastify();
   return app;
@@ -85,7 +96,8 @@ async function registerRoutes(app: FastifyInstance) {
   // interface exists at all.
   const embeddingGenerator = new MockEmbeddingGenerator();
   const reviewQueueRepo = new InMemoryReviewQueueRepository();
-  await app.register(documentRoutes, { repo, embeddingRepo, embeddingGenerator, reviewQueueRepo });
+  const costRepo = new InMemoryCostRepository();
+  await app.register(documentRoutes, { repo, embeddingRepo, embeddingGenerator, reviewQueueRepo, costRepo });
   await app.ready();
   return app;
 }
@@ -128,6 +140,7 @@ describe('document routes', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'claim_form', confidence: 0.9, reasoning: 'looks like a claim form' },
+      usage: MOCK_USAGE,
     });
 
     const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
@@ -174,6 +187,7 @@ describe('document routes', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'claim_form', confidence: 0.8, reasoning: 'reasoning' },
+      usage: MOCK_USAGE,
     });
 
     const upload1 = (await app.inject({ method: 'POST', url: '/documents', payload: pdfForm('a.pdf') })).json();
@@ -250,6 +264,7 @@ describe('document routes', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'claim_form', confidence: 0.9, reasoning: 'reasoning' },
+      usage: MOCK_USAGE,
     });
 
     const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
@@ -272,6 +287,7 @@ describe('document routes', () => {
     vi.mocked(classifyDocument).mockResolvedValue({
       status: 'success',
       classification: { documentType: 'claim_form', confidence: 0.9, reasoning: 'reasoning' },
+      usage: MOCK_USAGE,
     });
 
     const uploadResponse = await app.inject({ method: 'POST', url: '/documents', payload: pdfForm() });
@@ -341,6 +357,7 @@ describe('document routes', () => {
       embeddingRepo: new InMemoryEmbeddingRepository(),
       embeddingGenerator: throwingGenerator,
       reviewQueueRepo: new InMemoryReviewQueueRepository(),
+      costRepo: new InMemoryCostRepository(),
     });
     await failingApp.ready();
 
@@ -378,7 +395,7 @@ describe('document routes', () => {
         if (logger) {
           seenBindings.push((logger as unknown as pino.Logger).bindings());
         }
-        return generateMockEmbedding(text);
+        return { embedding: generateMockEmbedding(text), usage: { inputTokens: 10, outputTokens: 0 } };
       },
     };
 
@@ -389,6 +406,7 @@ describe('document routes', () => {
       embeddingRepo: new InMemoryEmbeddingRepository(),
       embeddingGenerator: observingGenerator,
       reviewQueueRepo: new InMemoryReviewQueueRepository(),
+      costRepo: new InMemoryCostRepository(),
     });
     await app.ready();
 

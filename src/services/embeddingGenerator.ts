@@ -33,7 +33,11 @@
 // docs/week-3-day-1.md.
 
 import type { FastifyBaseLogger } from 'fastify';
+import type { TokenUsage } from './costTracking.js';
 
+// Week 3 Day 3: generate() now returns usage alongside the embedding —
+// Titan reports inputTextTokenCount, so real usage is available and worth
+// surfacing the same way classifyDocument's does. See docs/week-3-day-3.md.
 export interface EmbeddingGenerator {
-  generate(text: string, logger?: FastifyBaseLogger): Promise<number[]>;
+  generate(text: string, logger?: FastifyBaseLogger): Promise<{ embedding: number[]; usage: TokenUsage }>;
 }
