@@ -14,8 +14,6 @@ services:
       POSTGRES_URL: postgresql://doctriage:doctriage@postgres:5432/doctriage
     depends_on:
       postgres: { condition: service_healthy }
-      mongo:    { condition: service_healthy }
-      redis:    { condition: service_healthy }
     volumes:
       - uploads:/app/uploads
     restart: unless-stopped
@@ -50,28 +48,6 @@ services:
       timeout: 5s
       retries: 5
 
-  mongo:
-    image: mongo:7
-    volumes:
-      - mongodata:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
 volumes:
   pgdata:
-  mongodata:
-  redisdata:
   uploads:

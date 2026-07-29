@@ -12,10 +12,6 @@ const envSchema = z.object({
   // applied to ANTHROPIC_API_KEY, instead of surfacing as a confusing error
   // on the first request that happens to touch the database.
   POSTGRES_URL: z.url(),
-  // MONGO_URL / REDIS_URL stay optional — no code connects to either yet.
-  // Each flips to required the day its own connection code is added.
-  MONGO_URL: z.url().optional(),
-  REDIS_URL: z.url().optional(),
 
   // AWS Bedrock credentials — required as of Week 2 Day 3, same fail-fast
   // reasoning as POSTGRES_URL/ANTHROPIC_API_KEY: BedrockEmbeddingGenerator
