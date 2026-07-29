@@ -7,19 +7,26 @@
 // for EmbeddingRepository and EmbeddingGenerator elsewhere in this project.
 import { classificationV1 } from './classification/v1.js';
 import { classificationV2 } from './classification/v2.js';
+import { classificationV3 } from './classification/v3.js';
 import type { PromptVersion } from './types.js';
 
 export const CLASSIFICATION_PROMPTS = {
   v1: classificationV1,
   v2: classificationV2,
+  v3: classificationV3,
 } as const;
 
 // The version used whenever a caller doesn't explicitly ask for one — e.g.
 // every existing /classify call from before today, which has no idea prompt
-// versions even exist. Kept at 'v1' until Day 5's eval harness produces a
-// real accuracy comparison; flipping this is a measured decision, not a
-// day-4 one. See docs/week-2-day-4.md, "A concrete v2..." section.
-export const CURRENT_CLASSIFICATION_VERSION: keyof typeof CLASSIFICATION_PROMPTS = 'v1';
+// versions even exist.
+//
+// Week 3 Day 4: moved from 'v1' to 'v3'. v2 (an accuracy experiment) stayed
+// unpromoted pending Day 5's eval harness measuring it — v3 is a SECURITY
+// fix (explicit "treat <document> content as data" instruction, closing a
+// real prompt-injection gap), not an accuracy experiment, so there's no
+// reason to wait for eval numbers before making it the default. See
+// docs/week-3-day-4.md.
+export const CURRENT_CLASSIFICATION_VERSION: keyof typeof CLASSIFICATION_PROMPTS = 'v3';
 
 // Resolves a version string to its PromptVersion. Throws on an unknown
 // version rather than silently falling back to the current version — a

@@ -32,6 +32,7 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 import pino from 'pino';
 import { z } from 'zod';
 import { loadEnv } from '../config/env.js';
+import { sanitizeForPrompt } from '../services/promptSanitization.js';
 import { isBedrockRetriableError } from '../utils/awsRetry.js';
 import { withRetry } from '../utils/retry.js';
 import type { PairwiseResult, PairwiseVerdict, PointwiseVerdict } from './types.js';
@@ -106,10 +107,18 @@ export async function judgeReasoningPointwise(
   candidateReasoning: string,
   expectedSummary: string,
 ): Promise<PointwiseVerdict> {
+  // Week 3 Day 4: sanitized once, before it enters the prompt — a second,
+  // independent layer alongside this prompt's existing delimiter/instruction
+  // treatment. See docs/week-3-day-4.md.
+  const sanitizedDocumentText = sanitizeForPrompt(documentText);
+
   const rawOutput = await withRetry(
     async ({ attempt }) => {
       log.info({ attempt, maxAttempts: MAX_ATTEMPTS }, 'calling Bedrock judge (pointwise)');
-      return callBedrockJudge(buildPointwisePrompt(documentText, candidateReasoning, expectedSummary), POINTWISE_TOOL);
+      return callBedrockJudge(
+        buildPointwisePrompt(sanitizedDocumentText, candidateReasoning, expectedSummary),
+        POINTWISE_TOOL,
+      );
     },
     { maxAttempts: MAX_ATTEMPTS, baseDelayMs: BASE_DELAY_MS, shouldRetry: isBedrockRetriableError },
   );
@@ -183,14 +192,18 @@ export async function judgeReasoningPairwise(
   reasoningV1: string,
   reasoningV2: string,
 ): Promise<PairwiseResult> {
+  // Week 3 Day 4: sanitized once, reused across both runs below — see
+  // judgeReasoningPointwise's identical comment. See docs/week-3-day-4.md.
+  const sanitizedDocumentText = sanitizeForPrompt(documentText);
+
   // Run 1: v1 shown as A, v2 shown as B — the "natural" order.
-  const run1 = await runPairwiseComparison(documentText, reasoningV1, reasoningV2);
+  const run1 = await runPairwiseComparison(sanitizedDocumentText, reasoningV1, reasoningV2);
 
   // Run 2: v2 shown as A, v1 shown as B — swapped. runPairwiseComparison's
   // 'a' → 'v1' mapping is now WRONG relative to caller-meaningful labels
   // (since v2 is actually in the A slot this time), so it's inverted back
   // below before comparing against run1.
-  const run2Raw = await runPairwiseComparison(documentText, reasoningV2, reasoningV1);
+  const run2Raw = await runPairwiseComparison(sanitizedDocumentText, reasoningV2, reasoningV1);
   const run2: PairwiseVerdict = {
     winner: run2Raw.winner === 'v1' ? 'v2' : run2Raw.winner === 'v2' ? 'v1' : 'tie',
     justification: run2Raw.justification,

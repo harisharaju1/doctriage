@@ -5,6 +5,7 @@ import pino from 'pino';
 import { getClassificationPrompt } from '../prompts/registry.js';
 import { classificationSchema, type Classification } from '../schemas/classification.js';
 import type { TokenUsage } from './costTracking.js';
+import { sanitizeForPrompt } from './promptSanitization.js';
 import { isRetriableError, withRetry, type DelayFn } from '../utils/retry.js';
 
 const log = pino({ name: 'classifier' });
@@ -118,10 +119,17 @@ export async function classifyDocument(
   // consistent prompt version throughout, including in the log lines below.
   const prompt = getClassificationPrompt(promptVersion);
 
+  // Week 3 Day 4: sanitized ONCE here, centrally, so every prompt version's
+  // build() receives sanitized input uniformly — no version needs to
+  // remember to sanitize its own input. This is a second, independent
+  // defense layer alongside v3's explicit "<document> is data" instruction
+  // and the schema validation below. See docs/week-3-day-4.md.
+  const sanitizedText = sanitizeForPrompt(text);
+
   const messages: MessageParam[] = [
     {
       role: 'user',
-      content: prompt.build(text),
+      content: prompt.build(sanitizedText),
     },
   ];
 
