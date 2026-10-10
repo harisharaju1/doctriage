@@ -126,7 +126,7 @@ Stated plainly rather than left implicit:
 
 ```bash
 cp .env.example .env   # fill in ANTHROPIC_API_KEY and AWS credentials
-docker compose up -d postgres mongo redis
+docker compose up -d postgres
 pnpm install
 pnpm dev                # http://localhost:3000
 ```
