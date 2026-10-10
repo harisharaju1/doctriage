@@ -2,7 +2,9 @@
 
 An AI-powered document triage service for insurance claims — upload a PDF, get it classified, extracted, and routed, with the production-operations layer a real deployment actually needs: confidence-based human review fallback, per-request cost tracking, correlation-ID logging, and layered defense against prompt injection.
 
-**Live demo:** `https://doctriage.<yourdomain>` — upload a sample claim document and watch it move through the real pipeline.
+**Live demo:** [doctriage.harishraju.tech](https://doctriage.harishraju.tech): upload a sample claim document and watch it move through the real pipeline.
+
+Case study with design decisions, eval results and cost measurements: **[harishraju.tech/work/doctriage](https://harishraju.tech/work/doctriage/)**
 
 ---
 
