@@ -10,3 +10,6 @@ docs/use-this-plan-zesty-mitten.md
 *.pdf
 *.md
 .DS_Store
+
+# Demo page sample documents (fictional) are served by GET /samples/:name
+!src/demo/samples/*.pdf
