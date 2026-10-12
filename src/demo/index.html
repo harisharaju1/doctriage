@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>doctriage · sorts insurance documents, asks a person when unsure</title>
+<title>doctriage · sorts incoming documents, asks a person when unsure</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%230e6b5c%22 stroke-width=%222.2%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m12 3 9 5-9 5-9-5z%22/%3E%3Cpath d=%22m3 13 9 5 9-5%22/%3E%3C/svg%3E" />
-<meta name="description" content="A live demo of doctriage: an AI service that reads insurance claim documents, works out what each one is, and hands it to a person when it isn't sure." />
+<meta name="description" content="A live demo of doctriage: an AI service that reads incoming documents, works out what each one is, and hands it to a person when it isn't sure. Shown here on insurance claims." />
 <script>
   // Before first paint, so the page never flashes the wrong theme. Light is the default.
   try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
@@ -100,7 +100,7 @@
   .hero .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 1.75rem 0 2.75rem; }
 
   /* Evals panel (hero) */
-  .evals { display: grid; grid-template-columns: 1.5fr 1fr; gap: 1.75rem; align-items: start; background: var(--card); border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: 14px; padding: 1.5rem 1.6rem; margin: 0 0 2.5rem; }
+  .evals { display: grid; grid-template-columns: 1.5fr 1fr; gap: 1.75rem; align-items: start; background: var(--card); border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: 14px; padding: 1.5rem 1.6rem; margin: 0; }
   .evals h2 { font-size: 1.3rem; margin-bottom: 0.75rem; }
   .evals p { font-size: 0.97rem; }
   .evals ul { margin: 0 0 1rem; padding-left: 1.1rem; font-size: 0.95rem; color: var(--muted); }
@@ -120,6 +120,16 @@
   .verdict { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 0.4rem 0.7rem; font-size: 0.92rem; }
   .sc-links { font-size: 0.8rem; margin: 0 !important; }
   @media (max-width: 780px) { .evals { grid-template-columns: 1fr; padding: 1.25rem; } }
+
+  /* Domain switcher (hero) */
+  .lede-note { font-size: 0.95rem; color: var(--muted); max-width: 42rem; margin-top: -0.25rem; }
+  .domains { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0 0 0.75rem; }
+  .domains span.small { margin-right: 0.25rem; }
+  .domains button { font: inherit; font-size: 0.85rem; background: var(--card); color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; padding: 0.3rem 0.8rem; cursor: pointer; }
+  .domains button:hover { color: var(--text); border-color: var(--faint); }
+  .domains button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .domains .live { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-left: 0.3rem; opacity: 0.85; }
+  .domain-note { font-size: 0.85rem; color: var(--muted); margin: 0.6rem 0 2.5rem; }
 
   /* Sorter diagram (hero) */
   .sorter { margin: 0; display: grid; grid-template-columns: 1fr auto 1.1fr auto 1.2fr; align-items: center; gap: 0.75rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 1.5rem; }
@@ -407,12 +417,52 @@
 <div class="hero">
   <div class="wrap">
     <p class="eyebrow">Live demo · a working service, not a mock-up</p>
-    <h1>An AI assistant that sorts insurance paperwork, and <em>knows when to ask a person</em>.</h1>
-    <p class="lede">When someone makes an insurance claim, they send a pile of documents: claim forms, hospital reports, police reports, garage bills. Someone has to open each one, work out what it is, and pass it to the right team. doctriage does that first step automatically. When it isn't sure, it hands the document to a person instead of guessing.</p>
+    <h1>An AI service that sorts incoming documents, and <em>knows when to ask a person</em>.</h1>
+    <p class="lede">Insurers, banks, hospitals, HR and legal teams all receive piles of mixed documents. Someone has to open each one, work out what it is, and pass it to the right team. doctriage does that first step automatically. When it isn't sure, it hands the document to a person instead of guessing.</p>
+    <p class="lede-note">The live demo on this page is set up for <strong>insurance claims</strong>. The pipeline itself doesn't care about the domain; pick one below to see how it maps.</p>
     <div class="actions">
       <a class="btn" href="#try">Try it with a sample document ↓</a>
       <a class="btn ghost" href="#how">See how it works</a>
     </div>
+
+    <div class="domains" role="group" aria-label="Show the pipeline for a domain">
+      <span class="small muted">Same pipeline, different documents:</span>
+      <button type="button" data-domain="insurance" aria-pressed="true">Insurance claims <span class="live">live demo</span></button>
+      <button type="button" data-domain="loans" aria-pressed="false">Bank loans</button>
+      <button type="button" data-domain="hospital" aria-pressed="false">Hospital billing</button>
+      <button type="button" data-domain="hr" aria-pressed="false">HR onboarding</button>
+      <button type="button" data-domain="legal" aria-pressed="false">Legal intake</button>
+    </div>
+    <figure class="sorter" aria-label="Diagram: a mixed pile of documents goes into doctriage, which labels each one so it can go to the right team, or to a person when it is unsure.">
+      <div class="pile" id="pile">
+        <div class="col-title">A mixed pile arrives</div>
+        <div class="chip"><svg width="18" height="18"><use href="#i-form"/></svg>Claim form</div>
+        <div class="chip"><svg width="18" height="18"><use href="#i-med"/></svg>Hospital report</div>
+        <div class="chip"><svg width="18" height="18"><use href="#i-shield"/></svg>Police report</div>
+        <div class="chip"><svg width="18" height="18"><use href="#i-car"/></svg>Garage bill</div>
+        <div class="chip"><svg width="18" height="18"><use href="#i-q"/></svg>Something unclear</div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="engine">
+        <strong>doctriage</strong>
+        <ol>
+          <li>1 · reads the text</li>
+          <li>2 · works out what it is</li>
+          <li>3 · checks how sure it is</li>
+          <li>4 · makes it searchable</li>
+        </ol>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="trays" id="trays">
+        <div class="col-title">So each can go to the right place</div>
+        <div class="chip team"><svg width="18" height="18"><use href="#i-form"/></svg>Claims team</div>
+        <div class="chip team"><svg width="18" height="18"><use href="#i-med"/></svg>Medical review</div>
+        <div class="chip team"><svg width="18" height="18"><use href="#i-shield"/></svg>Police &amp; legal</div>
+        <div class="chip team"><svg width="18" height="18"><use href="#i-car"/></svg>Vehicle assessor</div>
+        <div class="chip unsure"><svg width="18" height="18"><use href="#i-person"/></svg>Not sure? A person decides</div>
+      </div>
+    </figure>
+    <p class="domain-note" id="domainNote" aria-live="polite">This is the domain the live demo below runs on.</p>
 
     <aside class="evals" id="evals" aria-labelledby="evals-title">
       <div>
@@ -444,36 +494,6 @@
         <p class="sc-links"><a href="#challenges">More in the challenges</a> · <a href="https://github.com/harisharaju1/doctriage/blob/main/src/eval/runEval.ts" target="_blank" rel="noopener noreferrer">eval code</a></p>
       </div>
     </aside>
-
-    <figure class="sorter" aria-label="Diagram: a mixed pile of documents goes into doctriage, which sends each one to the right team, or to a person when it is unsure.">
-      <div class="pile">
-        <div class="col-title">A mixed pile arrives</div>
-        <div class="chip"><svg width="18" height="18"><use href="#i-form"/></svg>Claim form</div>
-        <div class="chip"><svg width="18" height="18"><use href="#i-med"/></svg>Hospital report</div>
-        <div class="chip"><svg width="18" height="18"><use href="#i-shield"/></svg>Police report</div>
-        <div class="chip"><svg width="18" height="18"><use href="#i-car"/></svg>Garage bill</div>
-        <div class="chip"><svg width="18" height="18"><use href="#i-q"/></svg>Something unclear</div>
-      </div>
-      <div class="arrow" aria-hidden="true">→</div>
-      <div class="engine">
-        <strong>doctriage</strong>
-        <ol>
-          <li>1 · reads the text</li>
-          <li>2 · works out what it is</li>
-          <li>3 · checks how sure it is</li>
-          <li>4 · makes it searchable</li>
-        </ol>
-      </div>
-      <div class="arrow" aria-hidden="true">→</div>
-      <div class="trays">
-        <div class="col-title">So each can go to the right place</div>
-        <div class="chip team"><svg width="18" height="18"><use href="#i-form"/></svg>Claims team</div>
-        <div class="chip team"><svg width="18" height="18"><use href="#i-med"/></svg>Medical review</div>
-        <div class="chip team"><svg width="18" height="18"><use href="#i-shield"/></svg>Police &amp; legal</div>
-        <div class="chip team"><svg width="18" height="18"><use href="#i-car"/></svg>Vehicle assessor</div>
-        <div class="chip unsure"><svg width="18" height="18"><use href="#i-person"/></svg>Not sure? A person decides</div>
-      </div>
-    </figure>
   </div>
 </div>
 
@@ -483,18 +503,18 @@
     <div class="section-intro">
       <p class="eyebrow">The problem</p>
       <h2>Sorting documents is slow, and getting it wrong is costly</h2>
-      <p>Before anyone can decide on a claim, every document in it has to be identified. Today that is often someone opening PDFs one by one.</p>
+      <p>Before anyone can approve a claim, a loan or a new hire, every document in the file has to be identified. Today that is often someone opening PDFs one by one.</p>
     </div>
     <div class="cards">
       <div class="card">
         <div class="icon"><svg width="20" height="20"><use href="#i-stack"/></svg></div>
         <h3>It arrives all mixed up</h3>
-        <p>One car accident can produce a claim form, a police report, a garage estimate and a hospital report, sent at different times by different people.</p>
+        <p>One car accident produces a claim form, a police report and a garage bill. One loan application brings payslips, bank statements and ID proofs. They arrive at different times, from different people.</p>
       </div>
       <div class="card">
         <div class="icon"><svg width="20" height="20"><use href="#i-clock"/></svg></div>
         <h3>Nothing moves until it's sorted</h3>
-        <p>A medical report sitting in the wrong inbox holds up the whole claim, and the customer waits.</p>
+        <p>A document sitting in the wrong inbox holds up the whole case, and the customer waits.</p>
       </div>
       <div class="card">
         <div class="icon"><svg width="20" height="20"><use href="#i-alert"/></svg></div>
@@ -520,7 +540,7 @@
     <figure class="fc" aria-label="Flowchart of what happens to one document. Described step by step in the text.">
       <div class="fc-node">
         <span class="fc-icon"><svg width="20" height="20"><use href="#i-upload"/></svg></span>
-        <span><strong>A document arrives</strong><small>A PDF: a claim form, hospital report, police report, garage bill…</small></span>
+        <span><strong>A document arrives</strong><small>A PDF: a form, a report, a bill, an ID proof… In the demo, insurance claim documents.</small></span>
         <a class="fc-see" href="#try">Demo step 1</a>
       </div>
       <div class="fc-arrow" aria-hidden="true"></div>
@@ -582,7 +602,7 @@
       <div class="fc-arrow dashed" aria-hidden="true"></div>
       <div class="fc-node next">
         <span class="fc-icon"><svg width="20" height="20"><use href="#i-mail"/></svg></span>
-        <span><strong>Next: another system routes it to the right team</strong><small>Claims, medical review, police &amp; legal, or the vehicle assessor, using doctriage's label. Not part of doctriage itself.</small></span>
+        <span><strong>Next: another system routes it to the right team</strong><small>The claims team, the loans desk, HR, whoever handles that type, using doctriage's label. Not part of doctriage itself.</small></span>
       </div>
       <figcaption class="fc-legend"><span><i class="solid"></i>Built and running in doctriage</span><span><i class="person"></i>Done by a person</span><span><i class="dash"></i>A bigger system's job</span></figcaption>
     </figure>
@@ -678,7 +698,7 @@
     <div class="section-intro">
       <p class="eyebrow">Try it</p>
       <h2>Watch a real document go through</h2>
-      <p>Pick a sample below. It goes through the real service, with a real AI model, and you'll see each step explained as it happens. It takes about 5–10 seconds.</p>
+      <p>This demo is set up for insurance claims. Pick a sample below. It goes through the real service, with a real AI model, and you'll see each step explained as it happens. It takes about 5–10 seconds.</p>
     </div>
 
     <div class="demo">
@@ -776,7 +796,7 @@
           <li>Email attachments</li>
           <li>The customer's app or website</li>
           <li>Scans from a branch office</li>
-          <li>A hospital's insurance desk</li>
+          <li>A scanner in the mailroom</li>
         </ul>
       </div>
       <div class="arrow" aria-hidden="true">→</div>
@@ -793,7 +813,7 @@
       <div class="arrow" aria-hidden="true">→</div>
       <div class="stage">
         <h3>Routed to the right team</h3>
-        <p class="tagline">automatically, by label</p>
+        <p class="tagline">automatically, by label (insurance example)</p>
         <ul>
           <li>Claim form → claims handler</li>
           <li>Medical report → medical review</li>
@@ -825,7 +845,7 @@
 
     <div class="two-col">
       <div>
-        <h3>Other places this could be used</h3>
+        <h3>The same pipeline in other domains</h3>
         <ul class="checklist">
           <li><strong>Health insurance cashless desks</strong>: sorting the bills, reports and prescriptions a hospital sends for approval.</li>
           <li><strong>Bank loan applications</strong>: telling payslips, bank statements and ID proofs apart.</li>
@@ -833,7 +853,7 @@
           <li><strong>Legal and compliance intake</strong>: routing contracts, notices and court documents.</li>
           <li><strong>Any shared inbox</strong> where documents pile up and someone has to sort them first.</li>
         </ul>
-        <p class="small muted" style="margin-top:0.75rem">The document types are a list in the code. Moving to a new domain means changing that list, the AI's instructions and the test examples; the rest of the pipeline stays the same.</p>
+        <p class="small muted" style="margin-top:0.75rem">Moving to a new domain changes three things: the list of document types, the AI's instructions, and the eval examples, which are re-run to prove the new setup works. Reading, the confidence check, the review queue, search, cost tracking and retries stay exactly as they are.</p>
       </div>
       <div>
         <h3>What it doesn't do yet</h3>
@@ -871,6 +891,10 @@
     <details>
       <summary>Why does it point to a section instead of writing an answer?</summary>
       <p>Finding the right section is the part that has to be reliable, so it's built and tested first. Writing an answer from that section is a separate step, and one where an AI can make things up. So doctriage shows you the source text and lets you read it.</p>
+    </details>
+    <details>
+      <summary>Does it only work for insurance documents?</summary>
+      <p>No. Insurance is just the example this demo is set up for. The domain lives in three places: the list of document types, the AI's instructions, and the eval examples. Swap those, re-run the eval to check the AI handles the new types well, and the same service sorts loan files, hospital bills, HR paperwork or legal documents. Everything else stays the same.</p>
     </details>
     <details>
       <summary>Who built this?</summary>
@@ -911,6 +935,36 @@
     try { localStorage.setItem('theme', next); } catch (e) {}
     syncToggle();
   });
+
+  // ── Domain switcher (hero diagram) ────────────────────────────
+  // Only "insurance" is what the running service is configured for; the
+  // others illustrate the same pipeline with a different list of types.
+  const DOMAINS = {
+    insurance: [['i-form', 'Claim form', 'Claims team'], ['i-med', 'Hospital report', 'Medical review'], ['i-shield', 'Police report', 'Police & legal'], ['i-car', 'Garage bill', 'Vehicle assessor']],
+    loans: [['i-doc', 'Payslip', 'Income check'], ['i-form', 'Bank statement', 'Statement analysis'], ['i-person', 'ID proof', 'KYC team'], ['i-shield', 'Property papers', 'Legal verification']],
+    hospital: [['i-med', 'Prescription', 'Pharmacy'], ['i-search', 'Lab report', 'Doctor review'], ['i-doc', 'Discharge summary', 'Medical records'], ['i-form', 'Hospital bill', 'Billing desk']],
+    hr: [['i-mail', 'Offer letter', 'HR records'], ['i-person', 'ID proof', 'Background check'], ['i-check', 'Degree certificate', 'Education check'], ['i-doc', 'Old payslip', 'Payroll']],
+    legal: [['i-form', 'Contract', 'Contracts team'], ['i-mail', 'Legal notice', 'Litigation'], ['i-shield', 'Court order', 'Compliance'], ['i-doc', 'Invoice', 'Accounts']],
+  };
+  const pileEl = document.getElementById('pile');
+  const traysEl = document.getElementById('trays');
+  const domainNote = document.getElementById('domainNote');
+  function chip(cls, iconId, text) {
+    const el = document.createElement('div');
+    el.className = cls;
+    el.append(icon(iconId, 18), text);
+    return el;
+  }
+  function showDomain(key) {
+    const rows = DOMAINS[key];
+    pileEl.replaceChildren(pileEl.firstElementChild, ...rows.map(([i, doc]) => chip('chip', i, doc)), chip('chip', 'i-q', 'Something unclear'));
+    traysEl.replaceChildren(traysEl.firstElementChild, ...rows.map(([i, , team]) => chip('chip team', i, team)), chip('chip unsure', 'i-person', 'Not sure? A person decides'));
+    for (const b of document.querySelectorAll('.domains button')) b.setAttribute('aria-pressed', String(b.dataset.domain === key));
+    domainNote.textContent = key === 'insurance'
+      ? 'This is the domain the live demo below runs on.'
+      : 'An illustration: the running demo is set up for insurance. Switching domain means a new list of document types, new AI instructions and new eval examples. The rest of the pipeline is unchanged.';
+  }
+  for (const b of document.querySelectorAll('.domains button')) b.addEventListener('click', () => showDomain(b.dataset.domain));
 
   // ── Data ──────────────────────────────────────────────────────
   const SAMPLES = [
