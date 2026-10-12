@@ -230,6 +230,29 @@
     .built-row > span:last-child::before { content: "Code: "; font-family: var(--sans); font-weight: 600; color: var(--faint); }
   }
 
+  /* Where it runs */
+  .host { margin: 0; display: grid; grid-template-columns: 1fr auto 1.4fr auto 1fr; gap: 0.75rem; align-items: center; }
+  .host-visitor { display: grid; grid-template-columns: auto 1fr; gap: 0.7rem; align-items: center; background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 0.85rem 1rem; }
+  .host-visitor.outside { border-style: dashed; border-color: var(--faint); background: transparent; }
+  .host-visitor strong, .host-item strong { display: block; line-height: 1.3; }
+  .host-visitor small, .host-item small { display: block; color: var(--muted); font-size: 0.82rem; line-height: 1.4; }
+  .host-link { position: relative; width: 3.5rem; height: 2px; background: var(--faint); }
+  .host-link span { position: absolute; bottom: 0.35rem; left: 50%; transform: translateX(-50%); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
+  .host-box { border: 2px solid var(--accent); border-radius: 14px; padding: 0.9rem; background: var(--accent-soft); }
+  .host-label { margin: 0 0 0.6rem; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+  .host-stack { display: grid; gap: 0.15rem; }
+  .host-item { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 0.6rem 0.8rem; }
+  .host-item.core { border-color: var(--accent); }
+  .host-arrow { text-align: center; color: var(--faint); line-height: 1; }
+  .host-facts { list-style: none; padding: 0; margin: 1.75rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; }
+  .host-facts li { border-top: 2px solid var(--accent); padding-top: 0.6rem; font-size: 0.9rem; color: var(--muted); }
+  .host-facts strong { display: block; color: var(--text); }
+  @media (max-width: 820px) {
+    .host { grid-template-columns: 1fr; justify-items: stretch; }
+    .host-link { width: 2px; height: 2.2rem; justify-self: center; }
+    .host-link span { bottom: auto; top: 50%; left: 0.6rem; transform: translateY(-50%); }
+  }
+
   /* Demo */
   #try { background: var(--surface); }
   .demo { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
@@ -400,6 +423,7 @@
       <a href="#evals">Evals</a>
       <a href="#how">How it works</a>
       <a href="#built">What's built</a>
+      <a href="#hosting">Hosting</a>
       <a href="#challenges">Challenges</a>
       <a href="#fits">Where it fits</a>
       <a class="cta-link" href="#try"><strong>Try it</strong></a>
@@ -416,7 +440,7 @@
 <!-- ───────────── Hero ───────────── -->
 <div class="hero">
   <div class="wrap">
-    <p class="eyebrow">Live demo · a working service, not a mock-up</p>
+    <p class="eyebrow">Live demo · a working service, self-hosted on my own VPS</p>
     <h1>An AI service that sorts incoming documents, and <em>knows when to ask a person</em>.</h1>
     <p class="lede">Insurers, banks, hospitals, HR and legal teams all receive piles of mixed documents. Someone has to open each one, work out what it is, and pass it to the right team. doctriage does that first step automatically. When it isn't sure, it hands the document to a person instead of guessing.</p>
     <p class="lede-note">The live demo on this page is set up for <strong>insurance claims</strong>. The pipeline itself doesn't care about the domain; pick one below to see how it maps.</p>
@@ -692,6 +716,47 @@
   </div>
 </section>
 
+<!-- ───────────── Where it runs ───────────── -->
+<section id="hosting">
+  <div class="wrap">
+    <div class="section-intro">
+      <p class="eyebrow">Where it runs</p>
+      <h2>Self-hosted on my own server</h2>
+      <p>doctriage doesn't run on a ready-made app platform. It runs on a VPS (a rented virtual server) that I set up and manage myself: the web server, the security certificate, the database and the deployments.</p>
+    </div>
+
+    <figure class="host" aria-label="Diagram: your browser connects over HTTPS to nginx on my VPS, which passes the request to the doctriage app; the app stores data in Postgres on the same server and calls Anthropic and AWS for the AI steps.">
+      <div class="host-visitor">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-person"/></svg></span>
+        <span><strong>Your browser</strong><small>You, on this page</small></span>
+      </div>
+      <div class="host-link" aria-hidden="true"><span>HTTPS</span></div>
+      <div class="host-box">
+        <p class="host-label">My VPS</p>
+        <div class="host-stack">
+          <div class="host-item"><strong>nginx</strong><small>The front door: secure connection, then passes requests in</small></div>
+          <div class="host-arrow" aria-hidden="true">↓</div>
+          <div class="host-item core"><strong>doctriage app</strong><small>In a Docker container</small></div>
+          <div class="host-arrow" aria-hidden="true">↓</div>
+          <div class="host-item"><strong>Postgres + pgvector</strong><small>The database and search index, in a second container</small></div>
+        </div>
+      </div>
+      <div class="host-link" aria-hidden="true"><span>AI calls</span></div>
+      <div class="host-visitor outside">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-spark"/></svg></span>
+        <span><strong>Anthropic &amp; AWS</strong><small>Claude and the search model; the only parts not on my server</small></span>
+      </div>
+    </figure>
+
+    <ul class="host-facts">
+      <li><strong>Secure by default.</strong> HTTPS certificates from Let's Encrypt that renew themselves.</li>
+      <li><strong>Ships on every push.</strong> New code pushed to GitHub is deployed to the server automatically.</li>
+      <li><strong>Watched.</strong> A scheduled health check alerts me if the service stops responding.</li>
+      <li><strong>Built to be cheap.</strong> One small server runs the app, the database and the search index, which is why search uses Postgres instead of a separate vector database.</li>
+    </ul>
+  </div>
+</section>
+
 <!-- ───────────── Try it ───────────── -->
 <section id="try">
   <div class="wrap">
@@ -911,7 +976,7 @@
 
 <footer>
   <div class="wrap">
-    <span>doctriage · built by <a href="https://harishraju.tech" target="_blank" rel="noopener noreferrer">Harish Raju</a></span>
+    <span>doctriage · built and self-hosted by <a href="https://harishraju.tech" target="_blank" rel="noopener noreferrer">Harish Raju</a></span>
     <nav aria-label="Project links">
       <a href="https://harishraju.tech/work/doctriage/" target="_blank" rel="noopener noreferrer">Case study</a>
       <a href="https://github.com/harisharaju1/doctriage" target="_blank" rel="noopener noreferrer">Source code</a>
