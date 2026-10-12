@@ -1,8 +1,8 @@
 # doctriage
 
-An AI-powered document triage service for insurance claims — upload a PDF, get it classified, extracted, and routed, with the production-operations layer a real deployment actually needs: confidence-based human review fallback, per-request cost tracking, correlation-ID logging, and layered defense against prompt injection.
+An AI-powered document triage service — upload a PDF, get its text extracted, its type classified with a confidence score, and its content indexed for search, with the production-operations layer a real deployment actually needs: confidence-based human review fallback, per-request cost tracking, correlation-ID logging, and layered defense against prompt injection. It's configured for insurance claims, but the pipeline itself is domain-agnostic — see [Adapting to another domain](#adapting-to-another-domain).
 
-**Live demo:** [doctriage.harishraju.tech](https://doctriage.harishraju.tech): upload a sample claim document and watch it move through the real pipeline.
+**Live demo:** [doctriage.harishraju.tech](https://doctriage.harishraju.tech): pick a sample document (the demo is set up for insurance claims) and watch it move through the real pipeline.
 
 Case study with design decisions, eval results and cost measurements: **[harishraju.tech/work/doctriage](https://harishraju.tech/work/doctriage/)**
 
@@ -10,7 +10,7 @@ Case study with design decisions, eval results and cost measurements: **[harishr
 
 ## What this is
 
-Insurance claims arrive as PDFs — claim forms, medical reports, police reports, repair estimates — and someone (or something) has to figure out what each one is before it can be routed to the right downstream process. This service does that: it accepts a PDF, extracts its text, classifies it with an LLM, and — depending on how confident that classification is — either trusts it automatically or routes it to a human review queue. Classified documents are also chunked and embedded into a vector store, so their content can be retrieved by question later (the "R" in RAG; there's no answer-generation step on top of it yet, by design — see [Design decisions](#design-decisions--tradeoffs)).
+Insurers, banks, hospitals, HR and legal teams all receive mixed PDFs, and someone (or something) has to figure out what each one is before it can be routed to the right downstream process. This repo is configured for insurance claims — claim forms, medical reports, police reports, repair estimates. This service does that: it accepts a PDF, extracts its text, classifies it with an LLM, and — depending on how confident that classification is — either trusts it automatically or routes it to a human review queue. Classified documents are also chunked and embedded into a vector store, so their content can be retrieved by question later (the "R" in RAG; there's no answer-generation step on top of it yet, by design — see [Design decisions](#design-decisions--tradeoffs)).
 
 This isn't a chatbot wrapper around an LLM API. It's a backend service with the engineering a production AI feature actually needs: retries and corrective retries around a genuinely unreliable upstream, prompt versioning with an eval harness to catch regressions, a fallback path for when the model isn't confident enough to trust, real cost attribution per request, and defense-in-depth against a document that's actively trying to manipulate the model reading it.
 
@@ -109,6 +109,22 @@ The reasoning below is pulled from this project's own day-by-day design docs (`d
 **Prompt versioning + an eval harness, not hand-edited prompt strings.** Prompts are versioned, named files (`src/prompts/classification/v1.ts`, `v2.ts`, `v3.ts`) resolved through a registry, not inline template literals — so a prompt change is reviewable in a diff, traceable in logs (every classification logs which version produced it), and A/B-testable. The eval harness (`pnpm eval`) runs a fixed fixture set through both classification's structured-field scoring and an LLM-as-judge layer for the free-text `reasoning` field, catching regressions a prompt edit might introduce before they reach production traffic.
 
 **Correlation-ID logging, threaded through the call graph, not per-module loggers.** Every route binds `request.log.child({ documentId })` once and threads that logger into every service call it makes — `classifyDocument`, the embedding generator, retrieval — replacing each service's own disconnected `pino` instance. A single document's entire journey through the pipeline is greppable by ID, even under concurrent requests, which a per-module logger can't provide once more than one document is in flight.
+
+---
+
+## Adapting to another domain
+
+Nothing in extraction, the confidence gate, the review queue, chunking, embedding, retrieval, cost tracking or retry logic knows it's handling insurance documents. The domain lives in a small, explicit set of places:
+
+| What | Where |
+|---|---|
+| The list of document types | `documentType` enum in `src/schemas/classification.ts` (the review-queue resolve schema reuses it, so it follows automatically) |
+| The model's tool definition | `CLASSIFY_TOOL` in `src/services/classifier.ts`: its description and enum mirror the list above |
+| The model's instructions | a new prompt version in `src/prompts/classification/`, registered in `src/prompts/registry.ts` and made `CURRENT_CLASSIFICATION_VERSION` |
+| Ground truth | new hand-labelled fixtures in `src/eval/fixtures.ts`; run `pnpm eval` to measure the new setup before trusting it |
+| The demo page only | type labels and sample PDFs in `src/demo/` |
+
+Loan files (payslips, bank statements, ID proofs), hospital billing (prescriptions, lab reports, bills), HR onboarding or legal intake would all be a change to those pieces, not a new service. The eval step is the part that shouldn't be skipped: the confidence threshold and the prompt were tuned against insurance documents, and a new domain needs its own baseline.
 
 ---
 
