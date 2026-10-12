@@ -68,6 +68,17 @@ const envSchema = z.object({
   // rather than a hardcoded constant, since the "right" threshold is
   // expected to get tuned against real data, not decided once in code.
   CLASSIFICATION_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.7),
+
+  // Week 4: abuse limits for the public demo, where every classify/embed/
+  // query is a paid call. See src/services/demoBudget.ts and
+  // src/plugins/rateLimit.ts.
+  // Total model spend allowed per UTC day; paid routes return 503 after it.
+  DEMO_DAILY_BUDGET_USD: z.coerce.number().positive().default(2),
+  // POST requests (uploads + paid calls) allowed per client IP per hour.
+  RATE_LIMIT_MAX_PER_HOUR: z.coerce.number().int().positive().default(60),
+  // Longest document (in words) accepted at upload. Bounds the size of every
+  // later classification prompt and the number of embedding calls.
+  MAX_DOCUMENT_WORDS: z.coerce.number().int().positive().default(5000),
 });
 
 export type Env = z.infer<typeof envSchema>;

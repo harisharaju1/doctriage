@@ -25,6 +25,7 @@ import {
 import { classifyDocument, MODEL as CLASSIFICATION_MODEL } from '../services/classifier.js';
 import { chunkText } from '../services/chunking.js';
 import { computeCostUsd } from '../services/costTracking.js';
+import { spentSinceUsd, startOfUtcDay } from '../services/demoBudget.js';
 import type { EmbeddingGenerator } from '../services/embeddingGenerator.js';
 import { extractText } from '../services/extraction.js';
 import { findRelevantChunks } from '../services/retrieval.js';
@@ -56,13 +57,41 @@ interface DocumentRouteOptions {
   // Week 3 Day 3: one record per billable call, surfaced via GET /metrics.
   // See docs/week-3-day-3.md.
   costRepo: CostRepository;
+  // Defaults come from env (DEMO_DAILY_BUDGET_USD, MAX_DOCUMENT_WORDS);
+  // overridable so tests can exercise the limits without env juggling.
+  limits?: { dailyBudgetUsd: number; maxDocumentWords: number };
 }
+
+// The routes that call a paid model API. Checked against the daily budget
+// before any work happens.
+const PAID_ROUTES = new Set(['/documents/:id/classify', '/documents/:id/embed', '/documents/:id/query']);
 
 export async function documentRoutes(
   app: FastifyInstance,
   opts: DocumentRouteOptions,
 ): Promise<void> {
   const { repo, embeddingRepo, embeddingGenerator, reviewQueueRepo, costRepo } = opts;
+  const limits = opts.limits ?? {
+    dailyBudgetUsd: env.DEMO_DAILY_BUDGET_USD,
+    maxDocumentWords: env.MAX_DOCUMENT_WORDS,
+  };
+
+  // Week 4: refuse paid calls once today's spend reaches the budget. A 503
+  // (not 429): it isn't this caller's fault, the service is out of budget
+  // for everyone until 00:00 UTC. Concurrent requests can each pass this
+  // check before any of them records its cost, so the budget can be
+  // overshot by the in-flight calls — bounded by the rate limit and the
+  // document-size cap, which is why all three exist together.
+  app.addHook('preHandler', async (request, reply) => {
+    if (request.method !== 'POST' || !PAID_ROUTES.has(request.routeOptions.url ?? '')) return;
+    const spent = spentSinceUsd(await costRepo.list(), startOfUtcDay(new Date()));
+    if (spent >= limits.dailyBudgetUsd) {
+      request.log.warn({ spent, budget: limits.dailyBudgetUsd }, 'daily demo budget reached — refusing paid call');
+      return reply.status(503).send({
+        error: "The live demo has used today's AI budget, so it's paused until 00:00 UTC. Please try again later.",
+      });
+    }
+  });
 
   // Shared by POST /documents (single) and POST /documents/batch-upload —
   // validates one file, saves + extracts it, and returns a typed
@@ -104,6 +133,20 @@ export async function documentRoutes(
 
     const filePath = getUploadPath(documentId);
     const extraction = await extractText(filePath);
+
+    // Week 4: cap document length before it's stored, so no later classify
+    // or embed call can be handed an arbitrarily large prompt.
+    if (extraction.status === 'success') {
+      const words = extraction.text.split(/\s+/).filter(Boolean).length;
+      if (words > limits.maxDocumentWords) {
+        await deleteUpload(documentId);
+        return {
+          status: 'rejected',
+          filename: file.filename,
+          error: `This document has ${words.toLocaleString('en-US')} words; the demo accepts up to ${limits.maxDocumentWords.toLocaleString('en-US')}.`,
+        };
+      }
+    }
 
     await repo.save({
       documentId,

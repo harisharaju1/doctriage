@@ -28,6 +28,7 @@
     "@anthropic-ai/sdk": "^0.106.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1085.0",
     "@fastify/multipart": "^10.0.0",
+    "@fastify/rate-limit": "^10.3.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.8.5",
     "pg": "^8.22.0",

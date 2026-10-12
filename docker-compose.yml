@@ -1,8 +1,13 @@
 services:
   app:
     build: .
+    # Loopback only, same reasoning as postgres below: Docker's published
+    # ports bypass ufw, and "3000:3000" left the API reachable from the
+    # internet at http://<vps-ip>:3000, skipping nginx, HTTPS and the
+    # X-Forwarded-For header the rate limit relies on. nginx proxies to
+    # 127.0.0.1:3000, so it's unaffected.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file: .env
     # .env is shared with local `pnpm dev` runs (which connect to Postgres via
     # the published "localhost:5432" below). Inside this Docker network,

@@ -162,4 +162,17 @@ pnpm eval         # runs the eval harness against real Claude/Bedrock — costs 
 
 ## Deployment
 
-Push to `main` triggers `.github/workflows/deploy.yml`, which SSHes into the VPS, pulls, and runs `docker compose up -d --build`. Nginx (with a Certbot-issued, auto-renewing cert) sits in front as the only public entry point — the app container's port is not directly reachable from outside the VPS. A VPS-side cron job polls `/health` and posts to a webhook if the service goes down.
+Push to `main` triggers `.github/workflows/deploy.yml`, which SSHes into the VPS, pulls, and runs `docker compose up -d --build`. Nginx (with a Certbot-issued, auto-renewing cert) sits in front as the only public entry point — the app container's port is published on `127.0.0.1` only, so it isn't reachable from outside the VPS (Docker's published ports bypass ufw, so the loopback binding is what actually enforces this). A VPS-side cron job polls `/health` and posts to a webhook if the service goes down.
+
+### Public demo limits
+
+Every classify, embed and query call is billed, and the demo is public. Three limits in the app, plus provider-side caps:
+
+| Limit | Default | Where |
+|---|---|---|
+| POST requests per client IP per hour | 60 (`RATE_LIMIT_MAX_PER_HOUR`) | `src/plugins/rateLimit.ts` → 429 |
+| Longest document accepted at upload | 5,000 words (`MAX_DOCUMENT_WORDS`) | `src/routes/documents.ts` → 400 |
+| Model spend per UTC day | $2 (`DEMO_DAILY_BUDGET_USD`) | `src/services/demoBudget.ts` → 503 on paid routes |
+| Monthly spend | set by hand | Anthropic Console workspace spend limit; AWS Budgets alert for Bedrock |
+
+The rate limit keys on the client IP, which requires nginx to append it: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` in the `location` block that proxies to the app (the app trusts exactly one proxy hop). The daily budget is computed from the in-memory cost records, so it resets if the process restarts; the provider caps are the backstop for that.

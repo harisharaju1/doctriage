@@ -11,11 +11,15 @@ import { PostgresEmbeddingRepository } from './repositories/postgresEmbeddingRep
 import { demoRoutes } from './routes/demo.js';
 import { documentRoutes, MAX_UPLOAD_SIZE_BYTES } from './routes/documents.js';
 import { healthRoutes } from './routes/health.js';
+import { registerRateLimit } from './plugins/rateLimit.js';
 import { BedrockEmbeddingGenerator } from './services/bedrockEmbeddingGenerator.js';
 
 const env = loadEnv();
 
 const app = Fastify({
+  // One proxy hop: nginx. request.ip becomes the address nginx appended to
+  // X-Forwarded-For, which the rate limit keys on. See src/plugins/rateLimit.ts.
+  trustProxy: 1,
   logger: {
     level: 'info',
     transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
@@ -25,6 +29,9 @@ const app = Fastify({
 await app.register(multipart, {
   limits: { fileSize: MAX_UPLOAD_SIZE_BYTES },
 });
+
+// Registered before every route so it applies to all of them (POSTs only).
+await registerRateLimit(app, { maxPerHour: env.RATE_LIMIT_MAX_PER_HOUR });
 
 await app.register(healthRoutes);
 // Week 4 Day 3: the live pipeline showcase page — served at "/", so the

@@ -25,6 +25,18 @@ function omit(key: keyof typeof validEnv): Record<string, string> {
 }
 
 describe('loadEnv', () => {
+  it('defaults the public demo abuse limits', () => {
+    const env = loadEnv(validEnv);
+
+    expect(env.DEMO_DAILY_BUDGET_USD).toBe(2);
+    expect(env.RATE_LIMIT_MAX_PER_HOUR).toBe(60);
+    expect(env.MAX_DOCUMENT_WORDS).toBe(5000);
+  });
+
+  it('rejects a non-positive daily budget', () => {
+    expect(() => loadEnv({ ...validEnv, DEMO_DAILY_BUDGET_USD: '0' })).toThrow(/DEMO_DAILY_BUDGET_USD/);
+  });
+
   it('parses a valid environment', () => {
     const env = loadEnv({ ...validEnv, NODE_ENV: 'test', PORT: '4000' });
 

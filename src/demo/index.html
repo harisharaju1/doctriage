@@ -679,7 +679,7 @@
         <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/utils/retry.ts" target="_blank" rel="noopener noreferrer">retry.ts</a></span>
       </div>
       <div class="built-row" role="row">
-        <span role="cell"><strong>106 automated tests</strong>that run without calling the real AI</span>
+        <span role="cell"><strong>118 automated tests</strong>that run without calling the real AI</span>
         <span role="cell">Browse them on <a href="https://github.com/harisharaju1/doctriage/tree/main/src/__tests__" target="_blank" rel="noopener noreferrer">GitHub</a>: each file name says what it checks</span>
         <span role="cell"><a href="https://github.com/harisharaju1/doctriage/tree/main/src/__tests__" target="_blank" rel="noopener noreferrer">src/__tests__</a></span>
       </div>
@@ -891,6 +891,10 @@
     <details>
       <summary>Why does it point to a section instead of writing an answer?</summary>
       <p>Finding the right section is the part that has to be reliable, so it's built and tested first. Writing an answer from that section is a separate step, and one where an AI can make things up. So doctriage shows you the source text and lets you read it.</p>
+    </details>
+    <details>
+      <summary>Every click costs real money. What stops someone running up a bill?</summary>
+      <p>Three limits, all enforced by the server. Each network can take 60 actions an hour. Documents over 5,000 words are turned away before any AI sees them. And once the demo has spent $2 in a day, the paid steps pause until midnight UTC. On top of that, the AI accounts themselves have spending caps.</p>
     </details>
     <details>
       <summary>Does it only work for insurance documents?</summary>
