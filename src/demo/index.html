@@ -132,29 +132,71 @@
   .callout p:last-child { margin: 0; }
 
   /* How it works: flowchart */
-  .flow { list-style: none; padding: 0; margin: 0; position: relative; max-width: 46rem; }
-  .flow > li { position: relative; padding: 0 0 1.75rem 3.5rem; }
-  .flow > li::before { content: ""; position: absolute; left: 1.15rem; top: 2.4rem; bottom: 0; width: 2px; background: var(--rule); }
-  .flow > li:last-child::before { display: none; }
-  .flow .num { position: absolute; left: 0; top: 0; width: 2.4rem; height: 2.4rem; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-  .flow .num.diamond { border-radius: 6px; transform: rotate(45deg) scale(0.86); background: var(--warn-soft); color: var(--warn); }
-  .flow .num.diamond span { transform: rotate(-45deg); }
-  .flow h3 { padding-top: 0.35rem; }
-  .flow p { color: var(--muted); margin-bottom: 0.5rem; }
-  .branch { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.75rem 0 0.5rem; }
-  .branch > div { border-radius: 10px; padding: 0.8rem 1rem; font-size: 0.92rem; }
-  .branch .yes { background: var(--accent-soft); }
-  .branch .no { background: var(--warn-soft); }
-  .branch strong { display: block; margin-bottom: 0.2rem; }
-  .branch .yes strong { color: var(--accent); }
-  .branch .no strong { color: var(--warn); }
-  @media (max-width: 560px) { .branch { grid-template-columns: 1fr; } }
+  .fc { margin: 0 auto; max-width: 40rem; display: flex; flex-direction: column; align-items: center; }
+  .fc-node, .fc-decision { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 0.85rem; align-items: center; background: var(--card); border: 2px solid var(--accent); border-radius: 12px; padding: 0.85rem 1rem; }
+  .fc-node strong, .fc-decision strong { display: block; line-height: 1.35; }
+  .fc-node small, .fc-decision small { display: block; color: var(--muted); font-size: 0.85rem; line-height: 1.45; margin-top: 0.15rem; }
+  .fc-icon { width: 2.4rem; height: 2.4rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
+  .fc-see { font-size: 0.75rem; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0.15rem 0.6rem; text-decoration: none; white-space: nowrap; }
+  .fc-see:hover { filter: brightness(0.95); }
+  .fc-decision { border-color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 0.85rem 1.25rem; }
+  .fc-decision .fc-icon { background: var(--card); color: var(--warn); }
+  .fc-decision .fc-see { background: var(--card); color: var(--warn); }
+  .fc-node.person { border-color: var(--warn); }
+  .fc-node.person .fc-icon { background: var(--warn-soft); color: var(--warn); }
+  .fc-node.next { border-style: dashed; border-color: var(--faint); background: transparent; }
+  .fc-node.next .fc-icon { background: var(--surface); color: var(--muted); }
+  .fc-node.small { grid-template-columns: auto 1fr; padding: 0.7rem 0.8rem; gap: 0.6rem; }
+  .fc-node.small .fc-icon { width: 2rem; height: 2rem; }
+  .fc-arrow { position: relative; width: 2px; height: 1.9rem; background: var(--faint); flex: none; }
+  .fc-arrow::after { content: ""; position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top: 7px solid var(--faint); border-bottom: 0; }
+  .fc-arrow.dashed { background: repeating-linear-gradient(var(--faint) 0 4px, transparent 4px 8px); }
+  .fc { --g: 1rem; }
+  .fc-branch { position: relative; width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: var(--g); padding-top: 1.9rem; }
+  /* the stem from the decision, then the bar that splits into Yes and No */
+  .fc-branch::before { content: ""; position: absolute; top: 0; left: 50%; width: 2px; height: 0.95rem; background: var(--faint); }
+  .fc-branch::after { content: ""; position: absolute; top: 0.95rem; left: calc(25% - var(--g) / 4); right: calc(25% - var(--g) / 4); height: 2px; background: var(--faint); }
+  .fc-path { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: -0.95rem; }
+  .fc-tag { position: relative; z-index: 1; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.1rem 0.6rem; border-radius: 999px; background: var(--accent); color: var(--bg); margin-bottom: -0.2rem; }
+  .fc-path.no .fc-tag { background: var(--warn); }
+  .fc-path .fc-arrow { height: 1.4rem; }
+  .fc-line { width: 2px; flex: 1 1 auto; min-height: 1rem; background: var(--faint); }
+  .fc-join { position: relative; width: calc(50% + var(--g) / 2); height: 2px; background: var(--faint); }
+  .fc-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.25rem; margin-top: 1.5rem; font-size: 0.8rem; color: var(--muted); }
+  .fc-legend i { display: inline-block; width: 1.4rem; height: 0.8rem; border-radius: 3px; vertical-align: -0.1rem; margin-right: 0.35rem; border: 2px solid var(--accent); }
+  .fc-legend i.person { border-color: var(--warn); }
+  .fc-legend i.dash { border: 2px dashed var(--faint); }
+  @media (max-width: 560px) {
+    .fc-node, .fc-decision { grid-template-columns: auto 1fr; }
+    .fc-see { grid-column: 2; justify-self: start; }
+    .fc-decision { border-radius: 16px; }
+    .fc { --g: 0.5rem; }
+    .fc-node.small { grid-template-columns: 1fr; text-align: center; justify-items: center; padding: 0.65rem 0.5rem; }
+    .fc-node.small small { font-size: 0.8rem; }
+  }
   details.tech { font-size: 0.875rem; color: var(--muted); }
   details.tech summary { cursor: pointer; color: var(--faint); width: fit-content; }
   details.tech summary:hover { color: var(--accent); }
-  details.tech div { margin-top: 0.4rem; padding: 0.6rem 0.8rem; border: 1px dashed var(--rule); border-radius: 8px; }
-  .analogy { font-size: 0.92rem; color: var(--text); background: var(--surface); border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0.25rem 0 0.6rem; }
-  .analogy b { color: var(--accent); }
+  details.tech > div { margin-top: 0.4rem; padding: 0.6rem 0.8rem; border: 1px dashed var(--rule); border-radius: 8px; }
+  details.engineers { max-width: 40rem; margin: 2rem auto 0; }
+  details.engineers ol { margin: 0; padding-left: 1.2rem; }
+  details.engineers li { margin: 0.35rem 0; }
+
+  /* What was built */
+  .built { border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; background: var(--card); }
+  .built-row { display: grid; grid-template-columns: 1.1fr 1.4fr 0.9fr; gap: 1rem; padding: 0.85rem 1.1rem; border-top: 1px solid var(--rule); font-size: 0.92rem; }
+  .built-row:first-child { border-top: 0; }
+  .built-row.head { background: var(--surface); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); }
+  .built-row > span { color: var(--muted); }
+  .built-row strong { display: block; color: var(--text); }
+  .built-row > span:last-child { font-family: var(--mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+  .built-row.head > span:last-child { font-family: inherit; font-size: inherit; }
+  @media (max-width: 720px) {
+    .built-row { grid-template-columns: 1fr; gap: 0.3rem; }
+    .built-row.head { display: none; }
+    .built-row > span:nth-child(2)::before { content: "See it: "; font-weight: 600; color: var(--accent); }
+    .built-row > span:last-child::before { content: "Code: "; font-family: var(--sans); font-weight: 600; color: var(--faint); }
+  }
 
   /* Demo */
   #try { background: var(--surface); }
@@ -311,6 +353,9 @@
     <symbol id="i-stack" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
     <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
   </defs>
 </svg>
@@ -321,6 +366,7 @@
     <nav aria-label="Sections">
       <a href="#problem">The problem</a>
       <a href="#how">How it works</a>
+      <a href="#built">What's built</a>
       <a href="#challenges">Challenges</a>
       <a href="#fits">Where it fits</a>
       <a class="cta-link" href="#try"><strong>Try it</strong></a>
@@ -366,7 +412,7 @@
       </div>
       <div class="arrow" aria-hidden="true">→</div>
       <div class="trays">
-        <div class="col-title">Each goes to the right place</div>
+        <div class="col-title">So each can go to the right place</div>
         <div class="chip team"><svg width="18" height="18"><use href="#i-form"/></svg>Claims team</div>
         <div class="chip team"><svg width="18" height="18"><use href="#i-med"/></svg>Medical review</div>
         <div class="chip team"><svg width="18" height="18"><use href="#i-shield"/></svg>Police &amp; legal</div>
@@ -413,53 +459,162 @@
   <div class="wrap">
     <div class="section-intro">
       <p class="eyebrow">How it works</p>
-      <h2>What happens to a document, step by step</h2>
-      <p>Each step is plain English first. If you're technical, open "Under the hood" for the details.</p>
+      <h2>The journey of one document</h2>
+      <p>Follow the arrows from top to bottom. Solid boxes are what doctriage does; you can watch every one of them happen in the demo below. The dashed box is what a bigger system would do next.</p>
     </div>
-    <ol class="flow">
-      <li>
-        <div class="num">1</div>
-        <h3>You hand over a PDF</h3>
-        <p>Like dropping a letter into an office in-tray. doctriage checks it really is a PDF and isn't too large (10 MB at most).</p>
-        <details class="tech"><summary>Under the hood</summary><div><code>POST /documents</code> (Fastify, multipart). The file type and size are checked before anything else happens. Every later step is a separate call, so an upload still works even if the AI service is down.</div></details>
-      </li>
-      <li>
-        <div class="num">2</div>
-        <h3>It reads the text</h3>
-        <p>It copies the words off the page. If a PDF is only a photo of a page, there's no text to copy, and doctriage says so clearly instead of guessing.</p>
-        <details class="tech"><summary>Under the hood</summary><div>Text extraction with <code>unpdf</code>. An image-only PDF returns a typed <code>extraction_failed</code> result rather than a server error.</div></details>
-      </li>
-      <li>
-        <div class="num">3</div>
-        <h3>An AI model works out what it is</h3>
-        <p>The text goes to Claude, an AI model made by Anthropic. It answers three things: <strong>what type of document</strong> this is, <strong>how sure it is</strong> (0 to 100%), and <strong>why</strong>.</p>
-        <p class="analogy"><b>Think of it as</b> a new colleague who reads fast and always shows their working.</p>
-        <details class="tech"><summary>Under the hood</summary><div>Claude Haiku 4.5 through tool use, so the answer comes back as structured data. It's validated with a Zod schema. If it doesn't match, the validation error is sent back to the model for one corrective retry. Network errors are retried with backoff, and every call has a timeout.</div></details>
-      </li>
-      <li>
-        <div class="num diamond"><span>?</span></div>
-        <h3>Is it sure enough?</h3>
-        <p>This is the step that makes doctriage safe to rely on.</p>
-        <div class="branch">
-          <div class="yes"><strong>70% sure or more</strong>The label is saved and the document moves on automatically.</div>
-          <div class="no"><strong>Less than 70% sure</strong>Nothing is saved as fact. The document goes to a review queue, and a person decides what it is.</div>
+
+    <figure class="fc" aria-label="Flowchart of what happens to one document. Described step by step in the text.">
+      <div class="fc-node">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-upload"/></svg></span>
+        <span><strong>A document arrives</strong><small>A PDF: a claim form, hospital report, police report, garage bill…</small></span>
+        <a class="fc-see" href="#try">Demo step 1</a>
+      </div>
+      <div class="fc-arrow" aria-hidden="true"></div>
+      <div class="fc-node">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-doc"/></svg></span>
+        <span><strong>The words are read off the page</strong><small>If it's only a photo with no text, it stops and says so instead of guessing.</small></span>
+        <a class="fc-see" href="#try">Demo step 1</a>
+      </div>
+      <div class="fc-arrow" aria-hidden="true"></div>
+      <div class="fc-node">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-spark"/></svg></span>
+        <span><strong>An AI decides what kind of document it is</strong><small>…and says how sure it is, and why. For example: "Police report, 95% sure: it has an FIR number and an officer's name."</small></span>
+        <a class="fc-see" href="#try">Demo step 2</a>
+      </div>
+      <div class="fc-arrow" aria-hidden="true"></div>
+      <div class="fc-decision">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-q"/></svg></span>
+        <span><strong>Is the AI at least 70% sure?</strong><small>The safety check. It decides whether a person needs to look.</small></span>
+        <a class="fc-see" href="#try">Demo step 3</a>
+      </div>
+      <div class="fc-branch">
+        <div class="fc-path yes">
+          <span class="fc-tag">Yes</span>
+          <div class="fc-arrow" aria-hidden="true"></div>
+          <div class="fc-node small">
+            <span class="fc-icon"><svg width="18" height="18"><use href="#i-check"/></svg></span>
+            <span><strong>The label is saved automatically</strong><small>Nobody has to touch it.</small></span>
+          </div>
+          <div class="fc-line" aria-hidden="true"></div>
         </div>
-        <details class="tech"><summary>Under the hood</summary><div>The threshold is <code>CLASSIFICATION_CONFIDENCE_THRESHOLD</code> (default 0.7). Below it, the result goes to <code>/review-queue</code> and is kept out of the document record, so a stored label only ever means "trusted". A person resolves it with <code>POST /review-queue/:id/resolve</code>.</div></details>
-      </li>
-      <li>
-        <div class="num">5</div>
-        <h3>It makes the document searchable</h3>
-        <p>The text is cut into pieces of about 300 words. Each piece is turned into a long list of numbers that captures what it <em>means</em>, so it can be found by meaning, not just by exact words.</p>
-        <p class="analogy"><b>Think of it as</b> a librarian who files every page by topic, so "what did the patient take?" finds the page about medicines even if the word "take" never appears on it.</p>
-        <details class="tech"><summary>Under the hood</summary><div>Chunks of 300 words with a 50-word overlap. Embeddings come from Amazon Titan Text Embeddings V2 on AWS Bedrock and are stored in Postgres with pgvector.</div></details>
-      </li>
-      <li>
-        <div class="num">6</div>
-        <h3>You can ask it questions</h3>
-        <p>Type a question, and it finds the section of the document most likely to hold the answer. It points you to the right place; it doesn't write an answer itself.</p>
-        <details class="tech"><summary>Under the hood</summary><div>The question is embedded the same way, and the closest chunks by cosine distance are returned (top 5), scoped to that one document.</div></details>
-      </li>
-    </ol>
+        <div class="fc-path no">
+          <span class="fc-tag">No</span>
+          <div class="fc-arrow" aria-hidden="true"></div>
+          <div class="fc-node small person">
+            <span class="fc-icon"><svg width="18" height="18"><use href="#i-person"/></svg></span>
+            <span><strong>It goes on a person's review list</strong><small>Nothing is saved as fact yet.</small></span>
+          </div>
+          <div class="fc-arrow" aria-hidden="true"></div>
+          <div class="fc-node small person">
+            <span class="fc-icon"><svg width="18" height="18"><use href="#i-check"/></svg></span>
+            <span><strong>A person picks the right type</strong><small>In the demo, that person is you.</small></span>
+          </div>
+          <div class="fc-line" aria-hidden="true"></div>
+        </div>
+      </div>
+      <div class="fc-join" aria-hidden="true"></div>
+      <div class="fc-arrow" aria-hidden="true"></div>
+      <div class="fc-node">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-stack"/></svg></span>
+        <span><strong>It's made searchable</strong><small>Filed by meaning, in pieces of about 300 words, so it can be found later.</small></span>
+        <a class="fc-see" href="#try">Demo step 4</a>
+      </div>
+      <div class="fc-arrow" aria-hidden="true"></div>
+      <div class="fc-node">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-search"/></svg></span>
+        <span><strong>Anyone can ask it questions</strong><small>"How much was the hospital bill?" jumps straight to the billing section.</small></span>
+        <a class="fc-see" href="#try">Demo step 5</a>
+      </div>
+      <div class="fc-arrow dashed" aria-hidden="true"></div>
+      <div class="fc-node next">
+        <span class="fc-icon"><svg width="20" height="20"><use href="#i-mail"/></svg></span>
+        <span><strong>Next: another system routes it to the right team</strong><small>Claims, medical review, police &amp; legal, or the vehicle assessor, using doctriage's label. Not part of doctriage itself.</small></span>
+      </div>
+      <figcaption class="fc-legend"><span><i class="solid"></i>Built and running in doctriage</span><span><i class="person"></i>Done by a person</span><span><i class="dash"></i>A bigger system's job</span></figcaption>
+    </figure>
+
+    <details class="tech engineers">
+      <summary>For engineers: what each box is under the hood</summary>
+      <div>
+        <ol>
+          <li><strong>Arrives:</strong> <code>POST /documents</code> (Fastify multipart). Type and size are checked (10 MB max). Every later step is its own endpoint, so an upload still works when the AI service is down.</li>
+          <li><strong>Read:</strong> <code>unpdf</code>. Image-only PDFs return a typed <code>extraction_failed</code>, not a 500.</li>
+          <li><strong>AI decides:</strong> Claude Haiku 4.5 through tool use, validated with Zod. A schema failure is sent back for one corrective retry. Network errors get retry with backoff, and every call has a timeout.</li>
+          <li><strong>70% check:</strong> <code>CLASSIFICATION_CONFIDENCE_THRESHOLD</code>. Below it, the result goes to <code>GET /review-queue</code> and stays out of the document record; <code>POST /review-queue/:id/resolve</code> records the person's choice.</li>
+          <li><strong>Searchable:</strong> 300-word chunks with 50 words of overlap, embedded with Amazon Titan Text Embeddings V2 on Bedrock, stored in Postgres with pgvector.</li>
+          <li><strong>Questions:</strong> <code>POST /documents/:id/query</code>. Returns the top 5 chunks of that one document by cosine distance.</li>
+        </ol>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ───────────── What was built ───────────── -->
+<section id="built">
+  <div class="wrap">
+    <div class="section-intro">
+      <p class="eyebrow">What was built</p>
+      <h2>Everything that's working, and how to see it yourself</h2>
+      <p>All of this is running on this server right now. The middle column shows how anyone can check it, with no technical knowledge needed. The last column links to the code for engineers.</p>
+    </div>
+    <div class="built" role="table" aria-label="Features, how to see them, and where the code is">
+      <div class="built-row head" role="row"><span role="columnheader">What it does</span><span role="columnheader">See it yourself</span><span role="columnheader">The code</span></div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Reads the text from a PDF</strong>and stops cleanly if there's no text to read</span>
+        <span role="cell">Pick any sample in <a href="#try">the demo</a> and watch step 1</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/services/extraction.ts" target="_blank" rel="noopener noreferrer">extraction.ts</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Works out the document type</strong>with how sure it is and why</span>
+        <span role="cell">Any sample, step 2. Read the AI's explanation under the bar.</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/services/classifier.ts" target="_blank" rel="noopener noreferrer">classifier.ts</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Checks every AI answer</strong>against a strict format, with one chance to fix it</span>
+        <span role="cell">Step 2, "Show what the service actually returned": the answer always has exactly the same fields</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/schemas/classification.ts" target="_blank" rel="noopener noreferrer">classification.ts</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Sends unsure documents to a person</strong>instead of guessing</span>
+        <span role="cell">Pick <a href="#try">"A confusing page"</a>; you become the reviewer in step 3. Waiting documents are listed at <a href="/review-queue" target="_blank" rel="noopener noreferrer">/review-queue</a>.</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/routes/documents.ts" target="_blank" rel="noopener noreferrer">documents.ts</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Searches by meaning</strong>and points to the right section</span>
+        <span role="cell">Pick the hospital discharge summary and try the suggested questions in step 5</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/services/retrieval.ts" target="_blank" rel="noopener noreferrer">retrieval.ts</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Records the cost of every AI call</strong>including the ones that fail</span>
+        <span role="cell">Live totals at <a href="/metrics" target="_blank" rel="noopener noreferrer">/metrics</a>, and the cost line under the demo</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/services/costTracking.ts" target="_blank" rel="noopener noreferrer">costTracking.ts</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Defends against documents that try to trick the AI</strong></span>
+        <span role="cell">Not visible in normal use. <a href="#challenges">Challenge 3</a> explains the three defences.</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/services/promptSanitization.ts" target="_blank" rel="noopener noreferrer">promptSanitization.ts</a>, <a href="https://github.com/harisharaju1/doctriage/blob/main/src/__tests__/promptInjection.integration.test.ts" target="_blank" rel="noopener noreferrer">its tests</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Tests every change to the AI's instructions</strong>on 20 hand-written examples</span>
+        <span role="cell"><a href="#challenges">Challenge 4</a> shows the change it stopped</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/eval/runEval.ts" target="_blank" rel="noopener noreferrer">runEval.ts</a>, <a href="https://github.com/harisharaju1/doctriage/blob/main/src/eval/fixtures.ts" target="_blank" rel="noopener noreferrer">the examples</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Retries and time limits</strong>for when outside services are slow or down</span>
+        <span role="cell">Invisible when everything works, which is the point</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/src/utils/retry.ts" target="_blank" rel="noopener noreferrer">retry.ts</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>106 automated tests</strong>that run without calling the real AI</span>
+        <span role="cell">Browse them on <a href="https://github.com/harisharaju1/doctriage/tree/main/src/__tests__" target="_blank" rel="noopener noreferrer">GitHub</a>: each file name says what it checks</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/tree/main/src/__tests__" target="_blank" rel="noopener noreferrer">src/__tests__</a></span>
+      </div>
+      <div class="built-row" role="row">
+        <span role="cell"><strong>Goes live automatically</strong>whenever new code is pushed</span>
+        <span role="cell">This page is the result. The history is on <a href="https://github.com/harisharaju1/doctriage/actions" target="_blank" rel="noopener noreferrer">GitHub Actions</a>.</span>
+        <span role="cell"><a href="https://github.com/harisharaju1/doctriage/blob/main/.github/workflows/deploy.yml" target="_blank" rel="noopener noreferrer">deploy.yml</a></span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -903,8 +1058,8 @@
       if (!finalType) return;
     } else {
       addStep('ok', 'Step 3 · Sure enough?',
-        h('p', {}, `Yes. ${pct(c.confidence)} is above the ${pct(threshold)} bar, so the label is saved and the document moves on by itself. No person needed.`),
-        h('div', { class: 'route' }, 'Sent to:', h('span', { class: 'pill' }, TYPES[finalType].team)),
+        h('p', {}, `Yes. ${pct(c.confidence)} is above the ${pct(threshold)} bar, so the label is saved automatically. No person needed.`),
+        h('div', { class: 'route' }, 'Would go to:', h('span', { class: 'pill' }, TYPES[finalType].team), h('span', { class: 'small muted' }, '(routing is the next system\'s job)')),
       );
     }
     setStep('check', 'done');
@@ -964,7 +1119,7 @@
           h('p', { style: 'margin-top:0.75rem' },
             `Saved as "${typeLabel(value)}", decided by a person. `,
             agreed ? "You agreed with the AI's guess, but it was right to ask." : `The AI's guess was "${typeLabel(c.documentType)}", so asking avoided a wrong label.`),
-          h('div', { class: 'route' }, 'Now sent to:', h('span', { class: 'pill' }, TYPES[value].team)),
+          h('div', { class: 'route' }, 'Would now go to:', h('span', { class: 'pill' }, TYPES[value].team)),
           raw(r.body),
         );
         resolve(value);
