@@ -99,8 +99,30 @@
   .hero .lede { font-size: 1.15rem; color: var(--muted); max-width: 42rem; }
   .hero .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 1.75rem 0 2.75rem; }
 
+  /* Evals panel (hero) */
+  .evals { display: grid; grid-template-columns: 1.5fr 1fr; gap: 1.75rem; align-items: start; background: var(--card); border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: 14px; padding: 1.5rem 1.6rem; margin: 0 0 2.5rem; }
+  .evals h2 { font-size: 1.3rem; margin-bottom: 0.75rem; }
+  .evals p { font-size: 0.97rem; }
+  .evals ul { margin: 0 0 1rem; padding-left: 1.1rem; font-size: 0.95rem; color: var(--muted); }
+  .evals li { margin: 0.3rem 0; }
+  .evals li strong { color: var(--text); }
+  .evals > div > p:last-child { margin: 0; }
+  .scorecard { background: var(--surface); border-radius: 12px; padding: 1.1rem 1.2rem; }
+  .scorecard p { margin: 0 0 0.6rem; }
+  .sc-title { font-weight: 700; }
+  .sc-sub { font-size: 0.85rem !important; color: var(--muted); }
+  .scorecard table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin: 0.25rem 0 0.75rem; }
+  .scorecard th { text-align: right; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); padding: 0 0 0.35rem; }
+  .scorecard td { padding: 0.35rem 0; border-top: 1px solid var(--rule); text-align: right; font-variant-numeric: tabular-nums; }
+  .scorecard td:first-child { text-align: left; color: var(--muted); }
+  .scorecard td.up { color: var(--accent); font-weight: 600; }
+  .scorecard td.down { color: var(--err); font-weight: 600; }
+  .verdict { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 0.4rem 0.7rem; font-size: 0.92rem; }
+  .sc-links { font-size: 0.8rem; margin: 0 !important; }
+  @media (max-width: 780px) { .evals { grid-template-columns: 1fr; padding: 1.25rem; } }
+
   /* Sorter diagram (hero) */
-  .sorter { display: grid; grid-template-columns: 1fr auto 1.1fr auto 1.2fr; align-items: center; gap: 0.75rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 1.5rem; }
+  .sorter { margin: 0; display: grid; grid-template-columns: 1fr auto 1.1fr auto 1.2fr; align-items: center; gap: 0.75rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 1.5rem; }
   .sorter .col-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); font-weight: 600; margin-bottom: 0.5rem; }
   .chip { display: flex; align-items: center; gap: 0.5rem; background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.875rem; margin-bottom: 0.4rem; }
   .chip svg { flex: none; color: var(--muted); }
@@ -223,7 +245,7 @@
   .tracker li.working::after { content: " …"; }
   .tracker li.done { color: var(--accent); border-color: var(--accent); }
   .tracker li.current { color: var(--text); border-color: var(--accent); }
-  .tracker { scroll-margin-top: 4.5rem; }
+  .tracker, section[id], .evals { scroll-margin-top: 4.5rem; }
   .tracker li.done::before { content: "✓ "; }
   .tracker li.waiting-you { color: var(--warn); border-color: var(--warn); }
   .tracker li.failed { color: var(--err); border-color: var(--err); }
@@ -365,6 +387,7 @@
     <a class="brand" href="#main"><svg width="20" height="20"><use href="#i-stack"/></svg>doctriage</a>
     <nav aria-label="Sections">
       <a href="#problem">The problem</a>
+      <a href="#evals">Evals</a>
       <a href="#how">How it works</a>
       <a href="#built">What's built</a>
       <a href="#challenges">Challenges</a>
@@ -390,6 +413,37 @@
       <a class="btn" href="#try">Try it with a sample document ↓</a>
       <a class="btn ghost" href="#how">See how it works</a>
     </div>
+
+    <aside class="evals" id="evals" aria-labelledby="evals-title">
+      <div>
+        <p class="eyebrow">Built with evals</p>
+        <h2 id="evals-title">How do you know a change to an AI made it better?</h2>
+        <p><strong>The problem:</strong> an AI system is steered by written instructions (a "prompt"). Edit them to fix one thing, and something else can quietly get worse. Reading a few answers by eye won't catch it, because the AI's answers vary from run to run and still sound confident when they're wrong.</p>
+        <p><strong>The fix: an eval.</strong> Think of it as a fixed exam for the AI. 20 example documents, each with the right answer written by hand, are re-run after every change and scored automatically:</p>
+        <ul>
+          <li><strong>Right type?</strong> An exact match against the known answer.</li>
+          <li><strong>Sensible confidence?</strong> Is "how sure it is" in the expected range?</li>
+          <li><strong>Sound reasoning?</strong> A second AI grades each explanation.</li>
+          <li><strong>Old vs new, head to head.</strong> Each comparison runs twice with the order swapped. If the verdict flips, it's thrown out, so which answer happened to be shown first can't decide the winner.</li>
+        </ul>
+        <p class="small muted">Every run is saved, so the next change is always compared against a real baseline. This matters even more for agentic systems, where the AI's decisions trigger the next step on their own.</p>
+      </div>
+      <div class="scorecard" role="img" aria-label="Eval result: the old prompt scored 100% correct type, 70% confidence in range, 95% sound reasoning. The new prompt scored 100%, 75% and 85%. Verdict: not shipped.">
+        <p class="sc-title">What the eval caught</p>
+        <p class="sc-sub">A rewrite meant to improve confidence, tested on the same 20 documents:</p>
+        <table>
+          <thead><tr><th></th><th>Old</th><th>New</th></tr></thead>
+          <tbody>
+            <tr><td>Right type</td><td>100%</td><td>100%</td></tr>
+            <tr><td>Confidence in range</td><td>70%</td><td class="up">75% ▲</td></tr>
+            <tr><td>Sound reasoning</td><td>95%</td><td class="down">85% ▼</td></tr>
+          </tbody>
+        </table>
+        <p class="verdict">Verdict: <strong>not shipped</strong></p>
+        <p class="sc-sub">A little better at one thing, clearly worse at explaining itself. Without the eval, that drop would have gone live unnoticed.</p>
+        <p class="sc-links"><a href="#challenges">More in the challenges</a> · <a href="https://github.com/harisharaju1/doctriage/blob/main/src/eval/runEval.ts" target="_blank" rel="noopener noreferrer">eval code</a></p>
+      </div>
+    </aside>
 
     <figure class="sorter" aria-label="Diagram: a mixed pile of documents goes into doctriage, which sends each one to the right team, or to a person when it is unsure.">
       <div class="pile">
