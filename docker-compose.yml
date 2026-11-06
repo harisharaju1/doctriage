@@ -25,6 +25,9 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16
+    # Without this, a VPS or Docker restart brings the app back (it has a restart
+    # policy) but leaves Postgres stopped, so the app crash-loops on "postgres" lookups.
+    restart: unless-stopped
     environment:
       POSTGRES_USER: doctriage
       POSTGRES_PASSWORD: doctriage
